@@ -39,6 +39,7 @@ class Runner:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._known_outputs: set[str] | None = None
         self._relays: dict[str, tuple[MetadataRelay, asyncio.Task]] = {}
+        self.bridge = None  # MqttBridge, set by __main__ when MQTT is configured
 
     # ---- lifecycle ---------------------------------------------------------------------------------
 
@@ -127,6 +128,14 @@ class Runner:
     def _on_track(self, group_id: str, info: TrackInfo) -> None:
         self.engine.on_track(group_id, info.as_dict())
 
+    def artwork(self) -> tuple[bytes, str, str] | None:
+        """Cover art for the active session, straight from the relay's memory."""
+        session = self.engine.session
+        if session is None or session.group_id not in self._relays:
+            return None
+        relay, _ = self._relays[session.group_id]
+        return relay.state.artwork()
+
     # ---- groups ------------------------------------------------------------------------------------
 
     async def apply_groups(self) -> None:
@@ -146,6 +155,8 @@ class Runner:
                 await self._stop_relay(group_id)
             for group in groups:
                 self._start_relay(group)
+            if self.bridge is not None:
+                self.bridge.groups_changed(set(diff.removed_groups))
             if not self.settings.supervise:
                 return
             for group_id in diff.removed_groups:
@@ -225,6 +236,10 @@ class Runner:
     async def reapply(self) -> None:
         async with self.lock:
             await self.execute(self.engine.reapply())
+
+    async def set_volume(self, pct: int) -> None:
+        async with self.lock:
+            await self.execute(self.engine.set_volume(pct))
 
     async def rescan(self) -> None:
         await self.client.rescan()

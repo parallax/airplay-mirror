@@ -11,6 +11,7 @@ It exists because AirPlay discovery from a phone on WiFi to speakers on WiFi is 
 - Speakers are pinned in the sender's list so their own patchy Bonjour adverts don't matter
 - Per-speaker volume levels within a group; the phone's volume slider still works on top
 - Apple TV pairing, status, and a log in the Home Assistant sidebar
+- What's playing (title, artist, album, artwork) on the panel, over MQTT, and as Home Assistant entities with a volume control and per-group "playing" sensors
 - Everything persists in `/data`; groups can be edited live without restarting the add-on
 
 ![The add-on's panel: a group playing to two speakers, the list of groups, and the speakers OwnTone found](docs/screenshot.png)

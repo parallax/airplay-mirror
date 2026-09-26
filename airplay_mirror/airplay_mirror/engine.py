@@ -288,6 +288,20 @@ class Engine:
         items = self._scaled(found)
         return [SetVolume(items)] if items else []
 
+    def set_volume(self, pct: int) -> list[Action]:
+        """Set the playing group's volume from outside (MQTT/automation), as if the phone's slider moved."""
+        pct = max(0, min(100, int(pct)))
+        if self.session is None:
+            return []
+        self.session.volume_pct = pct
+        group = self.groups.get(self.session.group_id)
+        if group is None or self.session.state == "pending_owntone":
+            return []
+        found, _ = self.resolve(group)
+        items = self._scaled(found)
+        self.event(f"Volume set to {pct}% via MQTT", "info", group.id)
+        return [SetVolume(items)] if items else []
+
     def on_track(self, group_id: str, track: dict[str, Any]) -> list[Action]:
         """Track metadata from the relay: shown in the UI, never drives playback."""
         if self.session is None or self.session.group_id != group_id:

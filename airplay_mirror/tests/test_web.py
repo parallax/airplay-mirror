@@ -214,6 +214,27 @@ async def test_volume_preview_and_reapply(client):
     assert ("update_output", "1", True, 100, None) in client.fake.calls
 
 
+async def test_session_artwork(client):
+    from airplay_mirror.metadata import CORE, SSNC, Item
+
+    r = await client.get("/api/session/artwork")
+    assert r.status == 404
+    await client.post("/api/groups", json={"name": "Bedroom Zone", "speakers": ["Bedroom"]})
+    await client.post("/api/hook/bedroom-zone/start")
+    r = await client.get("/api/session/artwork")
+    assert r.status == 404  # nothing sent yet
+    relay, _ = client.runner._relays["bedroom-zone"]
+    pict = int.from_bytes(b"PICT", "big")
+    relay.state.observe(Item(SSNC, pict, b"", b"\xff\xd8\xff\xe0jpegbytes"))
+    relay.state.observe(Item(CORE, int.from_bytes(b"minm", "big"), b"", b"Song"))
+    client.runner.engine.on_track("bedroom-zone", relay.state.info().as_dict())
+    r = await client.get("/api/session/artwork")
+    assert r.status == 200 and r.headers["Content-Type"].startswith("image/jpeg")
+    assert await r.read() == b"\xff\xd8\xff\xe0jpegbytes"
+    data = await (await client.get("/api/state")).json()
+    assert data["session"]["track"]["artwork_id"] and data["session"]["track"]["title"] == "Song"
+
+
 async def test_session_stop_and_rescan(client):
     await client.post("/api/groups", json={"name": "Bedroom Zone", "speakers": ["Bedroom"]})
     await client.post("/api/hook/bedroom-zone/start")

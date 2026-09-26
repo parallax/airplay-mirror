@@ -16,6 +16,7 @@ import asyncio
 import base64
 import contextlib
 import errno
+import hashlib
 import logging
 import os
 import re
@@ -82,9 +83,24 @@ class TrackInfo:
     artist: str = ""
     album: str = ""
     has_artwork: bool = False
+    artwork_id: str = ""  # short hash of the image bytes, so the UI can cache per image
 
     def as_dict(self) -> dict[str, Any]:
-        return {"title": self.title, "artist": self.artist, "album": self.album, "has_artwork": self.has_artwork}
+        return {
+            "title": self.title,
+            "artist": self.artist,
+            "album": self.album,
+            "has_artwork": self.has_artwork,
+            "artwork_id": self.artwork_id,
+        }
+
+
+def image_mime(data: bytes) -> str | None:
+    if data.startswith(b"\xff\xd8"):
+        return "image/jpeg"
+    if data.startswith(b"\x89PNG"):
+        return "image/png"
+    return None
 
 
 class TrackState:
@@ -140,9 +156,24 @@ class TrackState:
             item = self.current.get(name)
             return item.data.decode("utf-8", errors="replace").strip() if item and item.data else ""
 
+        art = self.artwork()
         return TrackInfo(
-            title=text("minm"), artist=text("asar"), album=text("asal"), has_artwork="PICT" in self.current
+            title=text("minm"),
+            artist=text("asar"),
+            album=text("asal"),
+            has_artwork=art is not None,
+            artwork_id=art[2] if art else "",
         )
+
+    def artwork(self) -> tuple[bytes, str, str] | None:
+        """(bytes, mime type, id) of the current cover art, if the source sent a JPEG or PNG."""
+        item = self.current.get("PICT")
+        if item is None or not item.data:
+            return None
+        mime = image_mime(item.data)
+        if mime is None:
+            return None
+        return item.data, mime, hashlib.sha1(item.data).hexdigest()[:12]
 
 
 TrackCallback = Callable[[str, TrackInfo], None]

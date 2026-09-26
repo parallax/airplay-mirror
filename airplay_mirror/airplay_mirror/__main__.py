@@ -16,6 +16,7 @@ from . import __version__
 from .config import load_settings
 from .engine import Engine
 from .groups import GroupStore
+from .mqtt import MqttBridge, supervisor_mqtt
 from .owntone import OwnToneClient
 from .procs import Supervisor
 from .runner import Runner
@@ -59,8 +60,24 @@ async def main_async(options_path: str | None) -> int:
             await runner.start()
         except Exception:  # noqa: BLE001
             log.exception("startup failed")
+
+        mqtt_task = None
+        if settings.mqtt_enabled and (settings.mqtt_host or await supervisor_mqtt(settings)):
+            bridge = MqttBridge(settings, runner)
+            runner.bridge = bridge
+            mqtt_task = asyncio.create_task(bridge.run(), name="mqtt")
+        elif settings.mqtt_enabled:
+            log.info("MQTT not configured: set mqtt_host or install the Mosquitto add-on to enable it")
+
         await stop.wait()
         log.info("Shutting down")
+        if mqtt_task is not None:
+            runner.bridge.stop()
+            mqtt_task.cancel()
+            try:
+                await mqtt_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
         await runner.stop()
         await web_runner.cleanup()
     return 0

@@ -1,11 +1,11 @@
 [project]
 name = "airplay-mirror"
-version = "0.1.5"
+version = "0.1.6"
 description = "Virtual AirPlay speakers that relay audio to groups of real AirPlay speakers"
 readme = "DOCS.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
-dependencies = ["aiohttp>=3.10,<4"]
+dependencies = ["aiohttp>=3.10,<4", "aiomqtt>=2.3,<3"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.6"]

@@ -7,7 +7,7 @@ Advertises named groups of AirPlay speakers as single virtual AirPlay speakers. 
 1. For every group the add-on runs a **shairport-sync** receiver (classic AirPlay) named after the group. That is what your phone sees. It writes the received audio and track metadata to a named pipe under `/data/pipes`.
 2. A single **OwnTone** instance watches those pipes. When audio arrives it starts playing the pipe to whichever speakers are currently selected.
 3. When a receiver's session starts it calls the add-on, which selects exactly the group's speakers in OwnTone with their configured volumes. When the session ends the pipe closes and OwnTone stops.
-   Track details (title, artist, album, artwork) go through a small relay in the add-on rather than straight into OwnTone: shairport-sync sends them before the audio starts, at a moment OwnTone is not yet listening, so the relay remembers the current track and hands it to OwnTone when it starts reading. The now-playing card and OwnTone's own interface both show what is playing.
+   Track details (title, artist, album, artwork) go through a small relay in the add-on rather than straight into OwnTone: shairport-sync sends them before the audio starts, at a moment OwnTone is not yet listening, so the relay remembers the current track and hands it to OwnTone when it starts reading. The now-playing card and OwnTone's own interface both show what is playing, including cover art when the app on your phone sends it.
 4. OwnTone sends to the speakers over **AirPlay 2** (PTP-timed, so they stay in sync). Any speaker can be switched to AirPlay 1 in the group editor if it misbehaves.
 
 Only one group plays at a time. Starting a second group takes over: the first phone is disconnected and the new group's speakers are selected.
@@ -21,6 +21,11 @@ The receivers are AirPlay 1 on purpose: an AirPlay 2 receiver and an AirPlay 2 s
 | `log_level` | `info` | `debug`, `info`, `warning` or `error`. `debug` also raises OwnTone's and shairport-sync's own verbosity. |
 | `port_base` | `5000` | RTSP port of the first group's receiver. Each further group uses the next port (5001, 5002, ...). Change it if something else on the host uses 5000. |
 | `owntone_port` | `3689` | OwnTone's HTTP/JSON API port. OwnTone's own web UI is also here, and Home Assistant's OwnTone integration can be pointed at it. |
+| `mqtt_enabled` | `true` | Publish state over MQTT and accept commands. Uses the Mosquitto add-on's broker automatically. |
+| `ha_discovery` | `true` | Create Home Assistant entities via MQTT discovery. |
+| `ha_discovery_prefix` | `homeassistant` | Discovery prefix, if you changed it in the MQTT integration. |
+| `status_topic` | `airplay-mirror` | Topic prefix for the add-on's MQTT messages. |
+| `mqtt_host`, `mqtt_port`, `mqtt_username`, `mqtt_password`, `mqtt_tls` | from Supervisor | Only needed if you don't use the Mosquitto add-on. |
 
 Groups are managed in the web UI, not in these options, and are stored in `/data/groups.json`.
 
@@ -48,6 +53,21 @@ Editing a group's speakers restarts OwnTone briefly (a few seconds) to apply the
 The phone's volume slider is forwarded straight to the speakers: the receiver passes the audio through at full scale and reports each volume change to the add-on, which sets the speakers' own volumes in OwnTone immediately. That avoids the delay you would get if the volume were baked into the audio before it goes through OwnTone's buffer.
 
 The per-speaker levels in a group are a balance, relative to the loudest speaker: the speaker with the highest level plays at exactly the phone's volume and the others sit below it in proportion (levels 40 and 60 mean the first plays at two thirds of the second). This is the same master/relative model OwnTone uses internally, so the two never disagree. While the group is playing, open *Edit* and the sliders change the speakers live, so you can balance by ear. *Save* keeps the levels, *Cancel* restores the previous ones.
+
+## MQTT and Home Assistant entities
+
+With the Mosquitto add-on installed (or `mqtt_host` set) the add-on publishes to `airplay-mirror/state` (retained JSON: status, playing group, title, artist, album, phone volume, speakers) and `airplay-mirror/artwork` (retained image bytes). With discovery on you get an **AirPlay Mirror** device with:
+
+- `sensor.airplay_mirror_status`, with the full state as attributes
+- `sensor.airplay_mirror_playing_group`, `_title`, `_artist`, `_album`
+- `image.airplay_mirror_artwork`, the current cover art
+- `number.airplay_mirror_volume`: the volume of whatever is playing, 0-100, like moving the phone's slider
+- `button.airplay_mirror_stop_playback` and `button.airplay_mirror_rescan_speakers`
+- one `binary_sensor.<group>_playing` per group, handy for automations such as dimming the lights when "Kitchen + Terrace" starts
+
+Commands: publish `stop`, `rescan` or `reapply` to `airplay-mirror/command`, or 0-100 to `airplay-mirror/volume/set`.
+
+Home Assistant's built-in OwnTone integration is a good companion: point it at the OwnTone port and you get a full `media_player` for the relay, with the same track details.
 
 ## Sync offsets
 

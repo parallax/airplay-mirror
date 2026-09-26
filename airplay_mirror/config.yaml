@@ -1,5 +1,5 @@
 name: AirPlay Mirror
-version: 0.1.5
+version: 0.1.6
 slug: airplay_mirror
 description: Advertises named groups of AirPlay speakers as single virtual AirPlay speakers and relays audio to them in sync
 url: https://github.com/parallax/airplay-mirror
@@ -10,6 +10,8 @@ arch:
   - armv7
 startup: application
 boot: auto
+services:
+  - mqtt:want
 host_network: true
 ingress: true
 ingress_port: 8099
@@ -19,7 +21,19 @@ options:
   log_level: info
   port_base: 5000
   owntone_port: 3689
+  mqtt_enabled: true
+  ha_discovery: true
+  status_topic: airplay-mirror
 schema:
   log_level: list(debug|info|warning|error)
   port_base: int(1024,65000)
   owntone_port: port
+  mqtt_enabled: bool
+  ha_discovery: bool
+  ha_discovery_prefix: str?
+  status_topic: str
+  mqtt_host: str?
+  mqtt_port: port?
+  mqtt_username: str?
+  mqtt_password: password?
+  mqtt_tls: bool?

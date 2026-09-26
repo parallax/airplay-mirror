@@ -38,6 +38,7 @@ def build_app(runner: Runner) -> web.Application:
             web.post("/api/session/preview", session_preview),
             web.post("/api/session/reapply", session_reapply),
             web.post("/api/outputs/{id}/pair", output_pair),
+            web.get("/api/session/artwork", session_artwork),
             web.post("/api/session/stop", session_stop),
             web.post("/api/rescan", rescan),
             web.post("/api/hook/{group_id}/{kind}", hook),
@@ -179,6 +180,16 @@ async def session_reapply(request: web.Request) -> web.Response:
     runner: Runner = request.app[RUNNER]
     await runner.reapply()
     return web.json_response({"ok": True})
+
+
+async def session_artwork(request: web.Request) -> web.Response:
+    """Cover art of what is playing now. The UI passes ?id=<artwork_id> so each image caches well."""
+    runner: Runner = request.app[RUNNER]
+    art = runner.artwork()
+    if art is None:
+        raise web.HTTPNotFound(text="no artwork")
+    data, mime, _ = art
+    return web.Response(body=data, content_type=mime, headers={"Cache-Control": "private, max-age=3600"})
 
 
 async def session_stop(request: web.Request) -> web.Response:

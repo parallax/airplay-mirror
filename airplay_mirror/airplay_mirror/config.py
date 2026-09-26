@@ -40,6 +40,17 @@ class Settings:
     shairport_bin: str = "/usr/bin/shairport-sync"
     hook_script: str = "/usr/local/bin/am-hook"
 
+    # MQTT (optional). Leave host empty inside Home Assistant to use the Mosquitto add-on automatically.
+    mqtt_enabled: bool = True
+    mqtt_host: str = ""
+    mqtt_port: int = 1883
+    mqtt_username: str = ""
+    mqtt_password: str = ""
+    mqtt_tls: bool = False
+    ha_discovery: bool = True
+    ha_discovery_prefix: str = "homeassistant"
+    status_topic: str = "airplay-mirror"
+
     # Behaviour
     supervise: bool = True  # False: web UI and config generation only (development on a laptop)
     hook_timeout_seconds: float = 5.0

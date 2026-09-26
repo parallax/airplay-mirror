@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.6
+
+- MQTT: publishes what's playing (retained state and artwork topics), accepts stop/rescan/volume commands, and creates Home Assistant entities via discovery. Uses the Mosquitto add-on automatically.
+- Cover art on the now-playing card, served by the add-on from the metadata relay (JPEG or PNG, as sent by the phone).
+
 ## 0.1.5
 
 - Track title, artist, album and artwork now reach OwnTone (and the now-playing card): shairport-sync sends them before OwnTone starts listening, so a relay in the add-on remembers the current track and replays it.

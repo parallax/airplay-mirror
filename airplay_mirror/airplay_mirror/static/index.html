@@ -71,6 +71,9 @@
   #now { background: var(--hero); }
   #now.live { background: var(--hero); }
   .np-title { font-size: 24px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+  .np { display: flex; gap: 18px; align-items: flex-start; }
+  .np-art { flex: none; width: 96px; height: 96px; border-radius: 12px; object-fit: cover; background: var(--field); box-shadow: 0 6px 18px rgba(0, 0, 0, .18); }
+  .np-body { min-width: 0; flex: 1; }
   .np-track { font-size: 16px; color: var(--text); margin-top: 2px; }
   .np-track .by { color: var(--text-2); }
   .np-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; color: var(--text-2); font-size: 13px; margin: 4px 0 12px; }
@@ -379,12 +382,13 @@ function render() {
       .concat(se.missing.map(n => `<span class="chip offline">${esc(n)}</span>`)).join('');
     const t = se.track || {};
     const track = t.title ? `<div class="np-track">${esc(t.title)}${t.artist ? ` <span class="by">— ${esc(t.artist)}</span>` : ''}${t.album ? ` <span class="by">· ${esc(t.album)}</span>` : ''}</div>` : '';
-    $('session').innerHTML = `<div class="np-title">${esc(se.group_name)}</div>${track}
+    const art = t.artwork_id ? `<img class="np-art" src="api/session/artwork?id=${esc(t.artwork_id)}" alt="">` : '';
+    $('session').innerHTML = `<div class="np">${art}<div class="np-body"><div class="np-title">${esc(se.group_name)}</div>${track}
       <div class="np-meta">
         <span class="eq ${playing ? 'on' : ''}" aria-hidden="true"><i></i><i></i><i></i></span>
         <span>${playing ? 'Playing' : esc(se.state.replace('_', ' '))} for ${fmtDuration(s.now - se.started_at)}</span>
         <span>Phone volume ${se.volume_pct ?? 100}%</span>
-      </div><div class="chips">${chips || '<span class="muted">None of the group’s speakers are online.</span>'}</div>`;
+      </div><div class="chips">${chips || '<span class="muted">None of the group’s speakers are online.</span>'}</div></div></div>`;
   }
 
   // Groups
