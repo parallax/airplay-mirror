@@ -1,0 +1,17 @@
+# Standalone example. Inside Home Assistant install the add-on instead.
+# Host networking is required: Bonjour (mDNS), AirPlay and PTP timing all need the real LAN interface.
+# Docker Desktop on macOS/Windows does not give containers real host networking, so this only makes
+# sense on a Linux box (a Pi, a NUC, ...).
+services:
+  airplay-mirror:
+    image: ghcr.io/parallax/airplay-mirror:latest
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - airplay-mirror:/data
+    environment:
+      TZ: Europe/London
+      AM_LOG_LEVEL: info
+      AM_PORT_BASE: "5000"
+volumes:
+  airplay-mirror:

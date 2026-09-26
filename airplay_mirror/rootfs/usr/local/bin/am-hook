@@ -1,0 +1,4 @@
+#!/bin/sh
+# Called by shairport-sync session hooks: am-hook <start|stop> <group_id>
+# Tells the controller a session started or ended so it can select the group's speakers.
+exec curl -s -m 5 -o /dev/null -X POST "http://127.0.0.1:${AM_WEB_PORT:-8099}/api/hook/$2/$1"
