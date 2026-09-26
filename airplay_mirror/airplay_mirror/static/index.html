@@ -85,7 +85,7 @@
 
   <section class="card editor" id="editor" style="display:none">
     <h2 id="editor-title">New group</h2>
-    <div class="note" id="editor-live" style="display:none">This group is playing now: volume sliders are applied to the speakers live, so you can balance them by ear. Save keeps the levels; Cancel restores the old ones.</div>
+    <div class="note" id="editor-live" style="display:none">This group is playing now: volume sliders and sync offsets are applied to the speakers live, so you can balance them by ear. Levels are relative: the highest slider plays at your phone's volume and the others sit below it. Save keeps the settings; Cancel restores the old ones.</div>
     <div class="row">
       <label>Name <input type="text" id="g-name" placeholder="Kitchen + Terrace" maxlength="63"></label>
       <span class="muted">This is the AirPlay speaker name your phone will see.</span>
@@ -110,7 +110,7 @@
   <section class="card">
     <div class="toolbar">
       <h2 style="margin:0">Speakers seen by OwnTone</h2>
-      <span class="muted" id="owntone-info"></span>
+      <span class="muted"><span id="owntone-info"></span> · <a id="owntone-link" href="#" target="_blank" rel="noopener">Open OwnTone's own UI</a></span>
     </div>
     <div class="tablewrap"><table>
       <thead><tr><th>Name</th><th class="hide-sm">Type</th><th>Selected</th><th class="hide-sm">Volume</th><th></th></tr></thead>
@@ -170,7 +170,7 @@ function openEditor(groupId) {
   editing = groupId ?? '';
   const g = groupId ? snap.groups.find(x => x.id === groupId) : null;
   draft = { name: g ? g.name : '', speakers: {} };
-  if (g) for (const s of g.speakers) draft.speakers[s.name] = { volume: s.volume, airplay2: s.airplay2, on: true };
+  if (g) for (const s of g.speakers) draft.speakers[s.name] = { volume: s.volume, airplay2: s.airplay2, offset: s.offset_ms || 0, on: true };
   $('editor-title').textContent = g ? `Edit ${g.name}` : 'New group';
   $('g-name').value = draft.name;
   $('g-errors').textContent = '';
@@ -184,14 +184,14 @@ function closeEditor(cancelled) {
   editing = null; draft = null; editorKey = ''; $('editor').style.display = 'none'; $('editor-live').style.display = 'none';
   if (restore) post('api/session/reapply');
 }
-const previewTimers = {};
-function previewVolume(name, level) {
+let previewTimer = null;
+function previewVolume() {
   if (!editingActive()) return;
-  const out = snap.outputs.find(o => o.name === name);
-  if (!out) return;
-  clearTimeout(previewTimers[name]);
-  previewTimers[name] = setTimeout(() => {
-    fetch(`api/outputs/${encodeURIComponent(out.id)}/volume`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level }) }).catch(() => {});
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => {
+    const levels = {}, offsets = {};
+    for (const [name, d] of Object.entries(draft.speakers)) if (d.on) { levels[name] = d.volume; offsets[name] = d.offset || 0; }
+    fetch('api/session/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ levels, offsets }) }).catch(() => {});
   }, 120);
 }
 let editorKey = '';  // which speaker names are currently rendered, to avoid needless re-renders
@@ -206,33 +206,40 @@ function renderEditor(force) {
   const box = $('g-speakers');
   if (!list.length) { box.innerHTML = '<div class="empty">No speakers discovered yet. Wait for OwnTone to find them, or press Rescan.</div>'; return; }
   box.innerHTML = list.map((n, i) => {
-    const d = draft.speakers[n] || { volume: 50, airplay2: true, on: false };
+    const d = draft.speakers[n] || { volume: 50, airplay2: true, offset: 0, on: false };
     const offline = !snap.outputs.some(o => o.name === n);
     return `<label class="speaker" data-i="${i}">
       <input type="checkbox" class="sp-on" ${d.on ? 'checked' : ''}>
       <span class="name">${esc(n)}${offline ? ' <span class="pill offline">offline</span>' : ''}</span>
       <span class="muted">Volume <input type="range" class="sp-vol" min="0" max="100" value="${d.volume}" ${d.on ? '' : 'disabled'}><span class="sp-vol-v">${d.volume}</span></span>
+      <span class="muted" title="Sync nudge: positive plays this speaker later, negative earlier">Offset <input type="number" class="sp-off" min="-2000" max="2000" step="10" value="${d.offset || 0}" ${d.on ? '' : 'disabled'} style="width:80px"> ms</span>
       <span class="muted"><input type="checkbox" class="sp-ap1" ${d.airplay2 ? '' : 'checked'} ${d.on ? '' : 'disabled'}> AirPlay 1 fallback</span>
     </label>`;
   }).join('');
   box.querySelectorAll('label.speaker').forEach(row => {
     const name = list[+row.dataset.i];
-    const entry = () => draft.speakers[name] || (draft.speakers[name] = { volume: 50, airplay2: true, on: false });
-    const vol = row.querySelector('.sp-vol'), ap1 = row.querySelector('.sp-ap1');
+    const entry = () => draft.speakers[name] || (draft.speakers[name] = { volume: 50, airplay2: true, offset: 0, on: false });
+    const vol = row.querySelector('.sp-vol'), ap1 = row.querySelector('.sp-ap1'), off = row.querySelector('.sp-off');
     row.querySelector('.sp-on').addEventListener('change', e => {
       entry().on = e.target.checked;
-      vol.disabled = ap1.disabled = !e.target.checked;
+      vol.disabled = ap1.disabled = off.disabled = !e.target.checked;
+      previewVolume();
+    });
+    off.addEventListener('change', e => {
+      entry().offset = Math.max(-2000, Math.min(2000, Math.round(+e.target.value || 0)));
+      e.target.value = entry().offset;
+      if (entry().on) previewVolume();
     });
     vol.addEventListener('input', e => {
       entry().volume = +e.target.value; row.querySelector('.sp-vol-v').textContent = e.target.value;
-      if (entry().on) previewVolume(name, +e.target.value);
+      if (entry().on) previewVolume();
     });
     ap1.addEventListener('change', e => { entry().airplay2 = !e.target.checked; });
   });
 }
 async function saveGroup() {
   draft.name = $('g-name').value;
-  const speakers = Object.entries(draft.speakers).filter(([, d]) => d.on).map(([name, d]) => ({ name, volume: d.volume, airplay2: d.airplay2 }));
+  const speakers = Object.entries(draft.speakers).filter(([, d]) => d.on).map(([name, d]) => ({ name, volume: d.volume, airplay2: d.airplay2, offset_ms: d.offset || 0 }));
   try {
     if (editing === '') await api('POST', 'api/groups', { name: draft.name, speakers });
     else await api('PUT', `api/groups/${encodeURIComponent(editing)}`, { name: draft.name, speakers });
@@ -279,7 +286,7 @@ function render() {
   // Groups
   $('groups-empty').style.display = s.groups.length ? 'none' : '';
   $('groups').innerHTML = s.groups.map(g => {
-    const chips = g.speakers.map(sp => `<span class="chip ${sp.online ? 'online' : 'offline'}" title="${sp.online ? 'online' : 'not currently seen by OwnTone'}">${esc(sp.name)} · ${sp.volume}%${sp.airplay2 ? '' : ' · AP1'}</span>`).join('');
+    const chips = g.speakers.map(sp => `<span class="chip ${sp.online ? 'online' : 'offline'}" title="${sp.online ? 'online' : 'not currently seen by OwnTone'}">${esc(sp.name)} · ${sp.volume}%${sp.offset_ms ? ` · ${sp.offset_ms > 0 ? '+' : ''}${sp.offset_ms} ms` : ''}${sp.airplay2 ? '' : ' · AP1'}</span>`).join('');
     const r = g.receiver || {};
     const rs = !s.supervise ? '<span class="pill muted">n/a</span>' : r.running ? `<span class="pill running">running</span>${r.restarts ? ` <span class="muted">(${r.restarts} restarts)</span>` : ''}` : '<span class="pill stopped">stopped</span>';
     return `<tr>
@@ -293,6 +300,7 @@ function render() {
 
   // Outputs
   $('owntone-info').textContent = s.owntone_up ? `OwnTone on port ${s.settings.owntone_port}` : 'OwnTone is down';
+  $('owntone-link').href = `${location.protocol === 'https:' ? 'http:' : location.protocol}//${location.hostname}:${s.settings.owntone_port}/`;
   $('outputs-empty').style.display = s.outputs.length ? 'none' : '';
   $('outputs').innerHTML = s.outputs.map(o => `<tr>
       <td>${esc(o.name)}${o.needs_auth_key ? ' <span class="pill pending">needs pairing</span>' : ''}${o.requires_auth ? ' <span class="pill muted">password</span>' : ''}</td>

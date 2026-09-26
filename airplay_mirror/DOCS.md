@@ -45,7 +45,15 @@ Editing a group's speakers restarts OwnTone briefly (a few seconds) to apply the
 
 The phone's volume slider is forwarded straight to the speakers: the receiver passes the audio through at full scale and reports each volume change to the add-on, which sets the speakers' own volumes in OwnTone immediately. That avoids the delay you would get if the volume were baked into the audio before it goes through OwnTone's buffer.
 
-The per-speaker levels in a group are the speaker's volume at 100% on the phone; lower phone volumes scale them down proportionally. Use them to balance a loud speaker against a quiet one: while the group is playing, open *Edit* and the sliders change the speakers live, so you can balance by ear. *Save* keeps the levels, *Cancel* restores the previous ones.
+The per-speaker levels in a group are a balance, relative to the loudest speaker: the speaker with the highest level plays at exactly the phone's volume and the others sit below it in proportion (levels 40 and 60 mean the first plays at two thirds of the second). This is the same master/relative model OwnTone uses internally, so the two never disagree. While the group is playing, open *Edit* and the sliders change the speakers live, so you can balance by ear. *Save* keeps the levels, *Cancel* restores the previous ones.
+
+## Sync offsets
+
+If one speaker is consistently a little ahead of or behind the others (a TV's audio path through an Apple TV is a common case), give it a sync offset in the group editor: positive milliseconds play it later, negative earlier, up to 2 seconds either way. OwnTone applies the offset per speaker. Like the volume sliders, offsets are applied live while the group is playing, so you can tune by ear.
+
+## OwnTone's own interface
+
+OwnTone runs on the Home Assistant host on the port set by `owntone_port` (3689 by default) and has its own web interface with speaker details and pairing. The *Speakers* card links to it. Home Assistant's built-in OwnTone integration can also be pointed at that port if you want the group player as a `media_player` entity.
 
 ## Running outside Home Assistant
 

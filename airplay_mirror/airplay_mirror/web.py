@@ -35,7 +35,7 @@ def build_app(runner: Runner) -> web.Application:
             web.put("/api/groups/{id}", groups_update),
             web.delete("/api/groups/{id}", groups_delete),
             web.post("/api/outputs/{id}/select", output_select),
-            web.post("/api/outputs/{id}/volume", output_volume),
+            web.post("/api/session/preview", session_preview),
             web.post("/api/session/reapply", session_reapply),
             web.post("/api/outputs/{id}/pair", output_pair),
             web.post("/api/session/stop", session_stop),
@@ -155,15 +155,22 @@ async def output_pair(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
-async def output_volume(request: web.Request) -> web.Response:
-    """Live volume preview from the group editor."""
+async def session_preview(request: web.Request) -> web.Response:
+    """Live preview from the group editor: {"levels": {"Kitchen": 40}, "offsets": {"Kitchen": 80}}."""
     runner: Runner = request.app[RUNNER]
     body = await _json(request)
+    raw = body.get("levels")
+    if not isinstance(raw, dict):
+        raise web.HTTPBadRequest(text="levels must be an object of speaker name -> level")
+    raw_offsets = body.get("offsets") or {}
+    if not isinstance(raw_offsets, dict):
+        raise web.HTTPBadRequest(text="offsets must be an object of speaker name -> ms")
     try:
-        level = int(body.get("level"))
+        levels = {str(k): int(v) for k, v in raw.items()}
+        offsets = {str(k): int(v) for k, v in raw_offsets.items()}
     except (TypeError, ValueError):
-        raise web.HTTPBadRequest(text="level must be an integer 0-100") from None
-    await runner.preview_volume(request.match_info["id"], level)
+        raise web.HTTPBadRequest(text="levels and offsets must be integers") from None
+    await runner.preview_volume(levels, offsets)
     return web.json_response({"ok": True})
 
 

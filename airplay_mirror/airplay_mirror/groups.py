@@ -28,9 +28,10 @@ class Speaker:
     name: str  # OwnTone output name, exactly as the speaker advertises itself
     volume: int = 50  # 0-100, applied when the group starts playing
     airplay2: bool = True  # False = force AirPlay 1 (RAOP) for this speaker
+    offset_ms: int = 0  # sync nudge applied in OwnTone, -2000..2000 (positive = play later)
 
     def as_dict(self) -> dict[str, Any]:
-        return {"name": self.name, "volume": self.volume, "airplay2": self.airplay2}
+        return {"name": self.name, "volume": self.volume, "airplay2": self.airplay2, "offset_ms": self.offset_ms}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Speaker:
@@ -38,6 +39,7 @@ class Speaker:
             name=str(d.get("name", "")).strip(),
             volume=int(d.get("volume", 50)),
             airplay2=bool(d.get("airplay2", True)),
+            offset_ms=int(d.get("offset_ms", 0) or 0),
         )
 
 
@@ -86,7 +88,7 @@ def parse_speakers(raw: Any) -> list[Speaker]:
             try:
                 out.append(Speaker.from_dict(item))
             except (TypeError, ValueError):
-                raise GroupError(["speaker volume must be a number"]) from None
+                raise GroupError(["speaker volume and offset must be numbers"]) from None
         else:
             raise GroupError(["each speaker must be a name or an object"])
     return out
@@ -130,6 +132,8 @@ def validate(
         seen.add(s.name.lower())
         if not 0 <= s.volume <= 100:
             errors.append(f"volume for {s.name!r} must be between 0 and 100")
+        if not -2000 <= s.offset_ms <= 2000:
+            errors.append(f"offset for {s.name!r} must be between -2000 and 2000 ms")
     return errors
 
 

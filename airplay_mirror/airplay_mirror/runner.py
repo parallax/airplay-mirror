@@ -8,7 +8,7 @@ import logging
 from typing import Any
 
 from .config import Settings
-from .engine import Action, Engine, PlayPipe, Rescan, RestartReceiver, SelectOutputs, SetVolume, StopPlayer
+from .engine import Action, Engine, PlayPipe, Rescan, RestartReceiver, SelectOutputs, SetOffsets, SetVolume, StopPlayer
 from .groups import Group, GroupStore
 from .owntone import OwnToneClient, OwnToneError
 from .procs import ProcSpec, Supervisor
@@ -181,8 +181,8 @@ class Runner:
         await self.client.update_output(output_id, selected=selected)
         await self.refresh_outputs()
 
-    async def preview_volume(self, output_id: str, level: int) -> None:
-        await self.execute(self.engine.preview_volume(output_id, level))
+    async def preview_volume(self, levels: dict[str, int], offsets: dict[str, int] | None = None) -> None:
+        await self.execute(self.engine.preview_volume(levels, offsets))
 
     async def reapply(self) -> None:
         async with self.lock:
@@ -212,6 +212,10 @@ class Runner:
             for output_id, volume in action.items:
                 await self.client.update_output(output_id, volume=volume)
             log.debug("Volume set: %s", action.items)
+        elif isinstance(action, SetOffsets):
+            for output_id, ms in action.items:
+                await self.client.update_output(output_id, offset_ms=ms)
+            log.info("Sync offsets set: %s", action.items)
         elif isinstance(action, PlayPipe):
             group = self.engine.groups.get(action.group_id)
             if group is None:

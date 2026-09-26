@@ -5,9 +5,11 @@ from airplay_mirror.engine import (
     PlayPipe,
     RestartReceiver,
     SelectOutputs,
+    SetOffsets,
     SetVolume,
     StopPlayer,
     airplay_db_to_pct,
+    scale_levels,
 )
 from airplay_mirror.groups import Group, Speaker
 from airplay_mirror.templates import pipe_path
@@ -34,7 +36,7 @@ def test_own_group_names_are_not_outputs(engine: Engine):
 
 def test_hook_start_selects_outputs_with_volumes(engine: Engine):
     actions = engine.on_hook_start("kitchen-terrace")
-    assert actions == [SelectOutputs([("1", 40), ("2", 60)])]
+    assert actions == [SelectOutputs([("1", 67), ("2", 100)])]
     assert engine.session.group_id == "kitchen-terrace"
     assert engine.session.state == "starting"
     assert engine.status() == "starting"
@@ -43,7 +45,7 @@ def test_hook_start_selects_outputs_with_volumes(engine: Engine):
 def test_hook_start_with_missing_speaker(engine: Engine):
     engine.on_outputs([output("1", "Kitchen")])
     actions = engine.on_hook_start("kitchen-terrace")
-    assert actions == [SelectOutputs([("1", 40)])]
+    assert actions == [SelectOutputs([("1", 100)])]  # alone, so it is the loudest
     assert engine.session.missing == ["Terrace"]
     assert any("Terrace" in e["message"] for e in engine.events)
 
@@ -53,7 +55,7 @@ def test_late_join_when_missing_speaker_appears(engine: Engine):
     engine.on_hook_start("kitchen-terrace")
     assert engine.on_outputs([output("1", "Kitchen")]) == []
     actions = engine.on_outputs([output("1", "Kitchen"), output("2", "Terrace")])
-    assert actions == [SelectOutputs([("1", 40), ("2", 60)])]
+    assert actions == [SelectOutputs([("1", 67), ("2", 100)])]
     assert engine.session.missing == []
 
 
@@ -69,7 +71,7 @@ def test_hook_stop_only_for_active_group(engine: Engine):
 def test_takeover_restarts_previous_receiver(engine: Engine):
     engine.on_hook_start("kitchen-terrace")
     actions = engine.on_hook_start("bedroom")
-    assert actions == [RestartReceiver("kitchen-terrace"), SelectOutputs([("3", 25)])]
+    assert actions == [RestartReceiver("kitchen-terrace"), SelectOutputs([("3", 100)])]
     assert engine.session.group_id == "bedroom"
     # the stale stop hook from the restarted receiver is ignored
     assert engine.on_hook_stop("kitchen-terrace") == []
@@ -84,7 +86,7 @@ def test_pending_when_owntone_down_then_applied(settings, clock):
     assert e.status() == "owntone_down"
     e.on_outputs([output("3", "Bedroom")])
     actions = e.on_owntone_state(True)
-    assert actions == [SelectOutputs([("3", 25)])]
+    assert actions == [SelectOutputs([("3", 100)])]
     assert e.session.state == "starting"
 
 
@@ -96,7 +98,7 @@ def test_owntone_crash_mid_session_reapplies(engine: Engine, clock):
     assert engine.session.state == "pending_owntone"
     assert engine.tick() == []
     actions = engine.on_owntone_state(True)
-    assert actions == [SelectOutputs([("3", 25)])]
+    assert actions == [SelectOutputs([("3", 100)])]
     clock.advance(5)
     assert engine.tick() == [PlayPipe("bedroom")]
 
@@ -171,7 +173,7 @@ def test_airplay_db_to_pct():
 def test_volume_hook_scales_speaker_levels(engine: Engine):
     engine.on_hook_start("kitchen-terrace")
     assert engine.on_volume("bedroom", "-15.0") == []  # not the active group
-    assert engine.on_volume("kitchen-terrace", "-15.0") == [SetVolume([("1", 20), ("2", 30)])]
+    assert engine.on_volume("kitchen-terrace", "-15.0") == [SetVolume([("1", 33), ("2", 50)])]
     assert engine.session.volume_pct == 50
     assert engine.on_volume("kitchen-terrace", "-144") == [SetVolume([("1", 0), ("2", 0)])]
     assert engine.on_volume("kitchen-terrace", "nope") == []
@@ -187,22 +189,53 @@ def test_late_join_uses_current_volume(engine: Engine):
     engine.on_hook_start("kitchen-terrace")
     engine.on_volume("kitchen-terrace", "-15.0")
     actions = engine.on_outputs([output("1", "Kitchen"), output("2", "Terrace")])
-    assert actions == [SelectOutputs([("1", 20), ("2", 30)])]
+    assert actions == [SelectOutputs([("1", 33), ("2", 50)])]
 
 
 def test_editing_the_playing_group_reapplies_levels(engine: Engine):
     engine.on_hook_start("kitchen-terrace")
     engine.on_volume("kitchen-terrace", "-15.0")
     edited = Group(id="kitchen-terrace", name="Kitchen + Terrace", slot=0, speakers=[Speaker("Kitchen", 80)])
-    assert engine.set_groups([edited]) == [SelectOutputs([("1", 40)])]
-    assert engine.reapply() == [SelectOutputs([("1", 40)])]
+    assert engine.set_groups([edited]) == [SelectOutputs([("1", 50)])]
+    assert engine.reapply() == [SelectOutputs([("1", 50)])]
     engine.on_hook_stop("kitchen-terrace")
     assert engine.reapply() == []
 
 
-def test_preview_volume_scales_by_phone_volume(engine: Engine):
-    assert engine.preview_volume("1", 80) == [SetVolume([("1", 80)])]
+def test_preview_volume_is_relative_to_the_loudest(engine: Engine):
+    assert engine.preview_volume({"Kitchen": 80, "Terrace": 40}) == [SetVolume([("1", 100), ("2", 50)])]
     engine.on_hook_start("kitchen-terrace")
     engine.on_volume("kitchen-terrace", "-15.0")
-    assert engine.preview_volume("1", 80) == [SetVolume([("1", 40)])]
-    assert engine.preview_volume("1", 500) == [SetVolume([("1", 50)])]
+    assert engine.preview_volume({"Kitchen": 80, "Terrace": 40}) == [SetVolume([("1", 50), ("2", 25)])]
+    assert engine.preview_volume({"kitchen": 500, "Nope": 10}) == [SetVolume([("1", 50)])]
+    assert engine.preview_volume({"Nope": 10}) == []
+    assert engine.preview_volume({"Kitchen": 0, "Terrace": 0}) == [SetVolume([("1", 0), ("2", 0)])]
+
+
+def test_scale_levels():
+    assert scale_levels([("a", 40), ("b", 60)], 100) == [("a", 67), ("b", 100)]
+    assert scale_levels([("a", 40), ("b", 60)], 50) == [("a", 33), ("b", 50)]
+    assert scale_levels([("a", 40)], 35) == [("a", 35)]
+    assert scale_levels([], 50) == []
+
+
+def test_sync_offsets_applied_on_select_and_preview(engine: Engine):
+    g = Group(
+        id="kitchen-terrace",
+        name="Kitchen + Terrace",
+        slot=0,
+        speakers=[Speaker("Kitchen", 40, offset_ms=80), Speaker("Terrace", 60)],
+    )
+    engine.set_groups([g])
+    actions = engine.on_hook_start("kitchen-terrace")
+    assert actions == [SelectOutputs([("1", 67), ("2", 100)]), SetOffsets([("1", 80)])]
+    # already applied: no repeat
+    assert engine.reapply() == [SelectOutputs([("1", 67), ("2", 100)])]
+    # preview changes Kitchen back to 0 and Terrace to -50
+    actions = engine.preview_volume({"Kitchen": 40, "Terrace": 60}, {"Kitchen": 0, "Terrace": -50})
+    assert actions == [SetVolume([("1", 67), ("2", 100)]), SetOffsets([("1", 0), ("2", -50)])]
+    # OwnTone reports offsets back; nothing to do if they match
+    engine.on_outputs([output("1", "Kitchen", offset_ms=80), output("2", "Terrace", offset_ms=0)])
+    assert engine.reapply() == [SelectOutputs([("1", 67), ("2", 100)])]
+    engine.on_outputs([output("1", "Kitchen", offset_ms=0), output("2", "Terrace", offset_ms=0)])
+    assert engine.reapply() == [SelectOutputs([("1", 67), ("2", 100)]), SetOffsets([("1", 80)])]

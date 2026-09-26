@@ -49,8 +49,9 @@ def test_validation():
     errs = validate("", [], [])
     assert "name is required" in errs
     assert "pick at least one speaker" in errs
-    errs = validate("x" * 64, [Speaker("A", 101), Speaker("a")], [])
+    errs = validate("x" * 64, [Speaker("A", 101), Speaker("a"), Speaker("B", offset_ms=2500)], [])
     assert any("63 bytes" in e for e in errs)
+    assert any("-2000 and 2000" in e for e in errs)
     assert any("between 0 and 100" in e for e in errs)
     assert any("listed twice" in e for e in errs)
 
@@ -71,9 +72,9 @@ def test_update_rejects_duplicate_name_and_max_groups(tmp_path):
 
 
 def test_parse_speakers():
-    assert parse_speakers(["Kitchen", {"name": "Terrace", "volume": 70, "airplay2": False}]) == [
+    assert parse_speakers(["Kitchen", {"name": "Terrace", "volume": 70, "airplay2": False, "offset_ms": -40}]) == [
         Speaker("Kitchen"),
-        Speaker("Terrace", 70, False),
+        Speaker("Terrace", 70, False, -40),
     ]
     with pytest.raises(GroupError):
         parse_speakers("Kitchen")

@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .config import Settings
-from .groups import Group
+from .groups import Group, Speaker
 from .templates import pipe_path
 
 # ---- actions -------------------------------------------------------------------------------------
@@ -28,6 +28,11 @@ class SelectOutputs:
 @dataclass
 class SetVolume:
     items: list[tuple[str, int]]  # (output id, volume 0-100)
+
+
+@dataclass
+class SetOffsets:
+    items: list[tuple[str, int]]  # (output id, offset in ms)
 
 
 @dataclass
@@ -50,7 +55,7 @@ class Rescan:
     pass
 
 
-Action = SelectOutputs | SetVolume | PlayPipe | StopPlayer | RestartReceiver | Rescan
+Action = SelectOutputs | SetVolume | SetOffsets | PlayPipe | StopPlayer | RestartReceiver | Rescan
 
 
 # ---- state ---------------------------------------------------------------------------------------
@@ -65,6 +70,7 @@ class Output:
     volume: int = 0
     requires_auth: bool = False
     needs_auth_key: bool = False
+    offset_ms: int = 0
 
     @classmethod
     def from_api(cls, raw: dict[str, Any]) -> Output:
@@ -76,6 +82,7 @@ class Output:
             volume=int(raw.get("volume", 0) or 0),
             requires_auth=bool(raw.get("requires_auth", False)),
             needs_auth_key=bool(raw.get("needs_auth_key", False)),
+            offset_ms=int(raw.get("offset_ms", 0) or 0),
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -87,6 +94,7 @@ class Output:
             "volume": self.volume,
             "requires_auth": self.requires_auth,
             "needs_auth_key": self.needs_auth_key,
+            "offset_ms": self.offset_ms,
         }
 
 
@@ -101,6 +109,19 @@ class Session:
     queued_explicitly: bool = False
     warned: bool = False
     volume_pct: int = 100  # the phone's volume, 0-100; speaker levels are scaled by it
+
+
+def scale_levels(items: list[tuple[str, int]], pct: int) -> list[tuple[str, int]]:
+    """Turn group levels into absolute OwnTone volumes for the phone's volume ``pct``.
+
+    Levels are relative to the loudest speaker in the group: that one plays at exactly ``pct`` and
+    the others keep their ratio to it. This matches OwnTone's own master/relative volume model, which
+    it also applies from the phone's volume in the metadata pipe, so the two never disagree.
+    """
+    top = max((level for _, level in items), default=0)
+    if top <= 0:
+        return [(i, 0) for i, _ in items]
+    return [(i, round(pct * level / top)) for i, level in items]
 
 
 def airplay_db_to_pct(value: float | str | None) -> int | None:
@@ -136,17 +157,28 @@ class Engine:
 
     def resolve(self, group: Group) -> tuple[list[tuple[Output, int]], list[str]]:
         """Map a group's speaker names to OwnTone outputs. Exact match first, then case-insensitive."""
+        found = [(out, sp.volume) for out, sp in self._resolve_speakers(group)[0]]
+        return found, self._resolve_speakers(group)[1]
+
+    def _resolve_speakers(self, group: Group) -> tuple[list[tuple[Output, Speaker]], list[str]]:
         by_name = {o.name: o for o in self.outputs.values()}
         by_lower = {o.name.lower(): o for o in self.outputs.values()}
-        found: list[tuple[Output, int]] = []
+        found: list[tuple[Output, Speaker]] = []
         missing: list[str] = []
-        for s in group.speakers:
-            out = by_name.get(s.name) or by_lower.get(s.name.lower())
+        for sp in group.speakers:
+            out = by_name.get(sp.name) or by_lower.get(sp.name.lower())
             if out is None:
-                missing.append(s.name)
+                missing.append(sp.name)
             else:
-                found.append((out, s.volume))
+                found.append((out, sp))
         return found, missing
+
+    def _offset_actions(self, pairs: list[tuple[Output, int]]) -> list[Action]:
+        """SetOffsets for outputs whose OwnTone offset differs from what the group wants."""
+        items = [(o.id, ms) for o, ms in pairs if o.offset_ms != ms]
+        for o, ms in pairs:
+            o.offset_ms = ms  # assume applied; refreshed from OwnTone on the next outputs update anyway
+        return [SetOffsets(items)] if items else []
 
     def _select_actions(self, group: Group) -> list[Action]:
         assert self.session is not None
@@ -157,11 +189,12 @@ class Engine:
             self.event(f"Not available right now: {', '.join(missing)}", "warning", group.id)
         if not found:
             self.event("None of the group's speakers are online; audio will be discarded", "error", group.id)
-        return [SelectOutputs(self._scaled(found))]
+        pairs = [(o, sp.offset_ms) for o, sp in self._resolve_speakers(group)[0]]
+        return [SelectOutputs(self._scaled(found)), *self._offset_actions(pairs)]
 
     def _scaled(self, found: list[tuple[Output, int]]) -> list[tuple[str, int]]:
         pct = self.session.volume_pct if self.session else 100
-        return [(o.id, round(level * pct / 100)) for o, level in found]
+        return scale_levels([(o.id, level) for o, level in found], pct)
 
     def status(self) -> str:
         if not self.owntone_up:
@@ -192,11 +225,27 @@ class Engine:
             return []
         return self._select_actions(group)
 
-    def preview_volume(self, output_id: str, level: int) -> list[Action]:
-        """Live preview from the group editor: set one speaker to ``level`` scaled by the phone's volume."""
-        level = max(0, min(100, int(level)))
+    def preview_volume(self, levels: dict[str, int], offsets: dict[str, int] | None = None) -> list[Action]:
+        """Live preview from the group editor: ``levels`` maps speaker names to their draft levels,
+        ``offsets`` to their draft sync offsets in ms.
+
+        The whole set is applied at once because levels are relative to the loudest speaker, so one
+        slider can change everyone's absolute volume.
+        """
         pct = self.session.volume_pct if self.session else 100
-        return [SetVolume([(output_id, round(level * pct / 100))])]
+        by_name = {o.name: o for o in self.outputs.values()}
+        by_lower = {o.name.lower(): o for o in self.outputs.values()}
+        items = []
+        pairs = []
+        for name, level in levels.items():
+            out = by_name.get(name) or by_lower.get(str(name).lower())
+            if out is not None:
+                items.append((out.id, max(0, min(100, int(level)))))
+                if offsets and name in offsets:
+                    pairs.append((out, max(-2000, min(2000, int(offsets[name])))))
+        actions: list[Action] = [SetVolume(scale_levels(items, pct))] if items else []
+        actions.extend(self._offset_actions(pairs))
+        return actions
 
     def on_outputs(self, raw: list[dict[str, Any]]) -> list[Action]:
         own = self.own_names()
@@ -213,7 +262,8 @@ class Engine:
             self.event(f"Back online, joining: {', '.join(joined)}", "success", group.id)
             self.session.output_ids = [o.id for o, _ in found]
             self.session.missing = missing
-            return [SelectOutputs(self._scaled(found))]
+            pairs = [(o, sp.offset_ms) for o, sp in self._resolve_speakers(group)[0]]
+            return [SelectOutputs(self._scaled(found)), *self._offset_actions(pairs)]
         return []
 
     def on_volume(self, group_id: str, value: float | str | None) -> list[Action]:

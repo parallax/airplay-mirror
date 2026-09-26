@@ -35,8 +35,10 @@ class FakeOwnTone:
         for o in self.out:
             o["selected"] = o["id"] in ids
 
-    async def update_output(self, output_id, *, selected=None, volume=None, pin=None):
-        self.calls.append(("update_output", output_id, selected, volume, pin))
+    async def update_output(self, output_id, *, selected=None, volume=None, pin=None, offset_ms=None):
+        self.calls.append(
+            ("update_output", output_id, selected, volume, pin) + ((offset_ms,) if offset_ms is not None else ())
+        )
         if pin is not None and self.fail_pin:
             raise OwnToneError("PUT /api/outputs/4 -> 500 pairing failed")
 
@@ -113,7 +115,9 @@ async def test_group_crud_and_validation(client):
         json={"name": "Kitchen Zone", "speakers": [{"name": "Kitchen", "airplay2": False}]},
     )
     assert r.status == 200
-    assert (await r.json())["group"]["speakers"] == [{"name": "Kitchen", "volume": 50, "airplay2": False}]
+    assert (await r.json())["group"]["speakers"] == [
+        {"name": "Kitchen", "volume": 50, "airplay2": False, "offset_ms": 0}
+    ]
 
     r = await client.put("/api/groups/nope", json={"name": "X", "speakers": ["Kitchen"]})
     assert r.status == 404
@@ -135,7 +139,8 @@ async def test_hook_selects_outputs_and_is_loopback_only(client):
     r = await client.post("/api/hook/kitchen-terrace/start")
     assert r.status == 200
     assert ("set_outputs", ["1", "2"]) in client.fake.calls
-    assert ("update_output", "1", True, 40, None) in client.fake.calls
+    assert ("update_output", "1", True, 80, None) in client.fake.calls  # 40 relative to Terrace's 50
+    assert ("update_output", "2", True, 100, None) in client.fake.calls
     data = await (await client.get("/api/state")).json()
     assert data["status"] == "starting"
     assert data["session"]["group_name"] == "Kitchen + Terrace"
@@ -143,8 +148,8 @@ async def test_hook_selects_outputs_and_is_loopback_only(client):
     client.fake.calls.clear()
     r = await client.post("/api/hook/kitchen-terrace/volume", json={"value": "-15.0"})
     assert r.status == 200
-    assert ("update_output", "1", None, 20, None) in client.fake.calls
-    assert ("update_output", "2", None, 25, None) in client.fake.calls
+    assert ("update_output", "1", None, 40, None) in client.fake.calls
+    assert ("update_output", "2", None, 50, None) in client.fake.calls
     r = await client.post("/api/hook/kitchen-terrace/volume?value=-144.0")
     assert r.status == 200
     assert ("update_output", "1", None, 0, None) in client.fake.calls
@@ -192,15 +197,21 @@ async def test_volume_preview_and_reapply(client):
     )
     await client.post("/api/hook/kitchen-terrace/start")
     client.fake.calls.clear()
-    r = await client.post("/api/outputs/1/volume", json={"level": 70})
+    r = await client.post(
+        "/api/session/preview", json={"levels": {"Kitchen": 70, "Terrace": 35}, "offsets": {"Terrace": 120}}
+    )
     assert r.status == 200
-    assert ("update_output", "1", None, 70, None) in client.fake.calls
-    r = await client.post("/api/outputs/1/volume", json={"level": "loud"})
+    assert ("update_output", "1", None, 100, None) in client.fake.calls
+    assert ("update_output", "2", None, 50, None) in client.fake.calls
+    assert ("update_output", "2", None, None, None, 120) in client.fake.calls
+    r = await client.post("/api/session/preview", json={"levels": {"Kitchen": "loud"}})
+    assert r.status == 400
+    r = await client.post("/api/session/preview", json={"levels": [1, 2]})
     assert r.status == 400
     client.fake.calls.clear()
     r = await client.post("/api/session/reapply")
     assert r.status == 200
-    assert ("update_output", "1", True, 40, None) in client.fake.calls
+    assert ("update_output", "1", True, 100, None) in client.fake.calls
 
 
 async def test_session_stop_and_rescan(client):

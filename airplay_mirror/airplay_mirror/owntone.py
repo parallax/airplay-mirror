@@ -69,7 +69,13 @@ class OwnToneClient:
         await self._request("PUT", "/api/outputs/set", json_body={"outputs": list(ids)})
 
     async def update_output(
-        self, output_id: str, *, selected: bool | None = None, volume: int | None = None, pin: str | None = None
+        self,
+        output_id: str,
+        *,
+        selected: bool | None = None,
+        volume: int | None = None,
+        pin: str | None = None,
+        offset_ms: int | None = None,
     ) -> None:
         body: dict[str, Any] = {}
         if selected is not None:
@@ -78,6 +84,8 @@ class OwnToneClient:
             body["volume"] = int(volume)
         if pin is not None:
             body["pin"] = pin
+        if offset_ms is not None:
+            body["offset_ms"] = int(offset_ms)
         await self._request("PUT", f"/api/outputs/{output_id}", json_body=body)
 
     # ---- player ------------------------------------------------------------------------------------
