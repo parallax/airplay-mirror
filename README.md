@@ -13,6 +13,8 @@ It exists because AirPlay discovery from a phone on WiFi to speakers on WiFi is 
 - Apple TV pairing, status, and a log in the Home Assistant sidebar
 - Everything persists in `/data`; groups can be edited live without restarting the add-on
 
+![The add-on's panel: a group playing to two speakers, the list of groups, and the speakers OwnTone found](docs/screenshot.png)
+
 ## How it works
 
 ```

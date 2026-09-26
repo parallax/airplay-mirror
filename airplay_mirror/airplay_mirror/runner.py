@@ -10,9 +10,10 @@ from typing import Any
 from .config import Settings
 from .engine import Action, Engine, PlayPipe, Rescan, RestartReceiver, SelectOutputs, SetOffsets, SetVolume, StopPlayer
 from .groups import Group, GroupStore
+from .metadata import MetadataRelay, TrackInfo
 from .owntone import OwnToneClient, OwnToneError
 from .procs import ProcSpec, Supervisor
-from .templates import build_config_set, pipe_path, shairport_conf_path, write_config_set
+from .templates import build_config_set, meta_path, pipe_path, shairport_conf_path, write_config_set
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class Runner:
         self._tasks: list[asyncio.Task] = []
         self._loop: asyncio.AbstractEventLoop | None = None
         self._known_outputs: set[str] | None = None
+        self._relays: dict[str, tuple[MetadataRelay, asyncio.Task]] = {}
 
     # ---- lifecycle ---------------------------------------------------------------------------------
 
@@ -46,6 +48,8 @@ class Runner:
         self.engine.set_groups(groups)
         write_config_set(self.settings, build_config_set(self.settings, groups))
         log.info("%d group(s) configured", len(groups))
+        for group in groups:
+            self._start_relay(group)
 
         if self.settings.supervise:
             await self.supervisor.start(self._owntone_spec())
@@ -79,6 +83,8 @@ class Runner:
         for task in self._tasks:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
+        for group_id in list(self._relays):
+            await self._stop_relay(group_id)
         receivers = [receiver_name(g.id) for g in self.store.all()]
         await self.supervisor.stop_all(order=[*receivers, OWNTONE])
 
@@ -95,6 +101,32 @@ class Runner:
             stop_timeout=5.0,
         )
 
+    # ---- metadata relays ---------------------------------------------------------------------------
+
+    def _start_relay(self, group: Group) -> None:
+        if group.id in self._relays:
+            return
+        relay = MetadataRelay(
+            group.id,
+            meta_path(self.settings, group),
+            f"{pipe_path(self.settings, group)}.metadata",
+            on_track=self._on_track,
+        )
+        task = asyncio.create_task(relay.run(self._stop), name=f"meta:{group.id}")
+        self._relays[group.id] = (relay, task)
+
+    async def _stop_relay(self, group_id: str) -> None:
+        entry = self._relays.pop(group_id, None)
+        if entry is None:
+            return
+        _, task = entry
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await task
+
+    def _on_track(self, group_id: str, info: TrackInfo) -> None:
+        self.engine.on_track(group_id, info.as_dict())
+
     # ---- groups ------------------------------------------------------------------------------------
 
     async def apply_groups(self) -> None:
@@ -110,6 +142,10 @@ class Runner:
                 sorted(diff.removed_groups),
                 sorted(diff.new_pipes),
             )
+            for group_id in diff.removed_groups:
+                await self._stop_relay(group_id)
+            for group in groups:
+                self._start_relay(group)
             if not self.settings.supervise:
                 return
             for group_id in diff.removed_groups:
@@ -172,6 +208,8 @@ class Runner:
         if names != self._known_outputs:
             self._known_outputs = names
             log.info("AirPlay speakers seen by OwnTone: %s", ", ".join(sorted(names)) or "none yet")
+            if self.engine.hidden_outputs:
+                log.info("Ignoring non-AirPlay outputs: %s", ", ".join(self.engine.hidden_outputs))
 
     async def pair(self, output_id: str, pin: str) -> None:
         await self.client.update_output(output_id, pin=pin)

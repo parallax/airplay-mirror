@@ -21,7 +21,7 @@ def test_shairport_conf(settings):
     assert "airplay_device_id_offset = 1;" in text
     assert 'output_backend = "pipe";' in text
     assert f'name = "{settings.pipes_dir}/bedroom";' in text
-    assert f'pipe_name = "{settings.pipes_dir}/bedroom.metadata";' in text
+    assert f'pipe_name = "{settings.meta_dir}/bedroom";' in text  # raw metadata goes to the relay, not OwnTone
     assert 'run_this_before_play_begins = "/usr/local/bin/am-hook start bedroom";' in text
     assert 'run_this_after_play_ends = "/usr/local/bin/am-hook stop bedroom";' in text
     assert 'wait_for_completion = "yes";' in text
@@ -78,6 +78,7 @@ def test_write_config_set_diffs(settings):
     for gid in ("kitchen-terrace", "bedroom"):
         assert stat.S_ISFIFO(os.stat(os.path.join(settings.pipes_dir, gid)).st_mode)
         assert stat.S_ISFIFO(os.stat(os.path.join(settings.pipes_dir, gid + ".metadata")).st_mode)
+        assert stat.S_ISFIFO(os.stat(os.path.join(settings.meta_dir, gid)).st_mode)
         assert os.path.isfile(os.path.join(settings.shairport_dir, gid + ".conf"))
 
     # Nothing changed: nothing reported.
@@ -102,3 +103,4 @@ def test_write_config_set_diffs(settings):
     assert not os.path.exists(os.path.join(settings.shairport_dir, "bedroom.conf"))
     assert not os.path.exists(os.path.join(settings.pipes_dir, "bedroom"))
     assert not os.path.exists(os.path.join(settings.pipes_dir, "bedroom.metadata"))
+    assert not os.path.exists(os.path.join(settings.meta_dir, "bedroom"))

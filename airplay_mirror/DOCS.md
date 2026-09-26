@@ -7,6 +7,7 @@ Advertises named groups of AirPlay speakers as single virtual AirPlay speakers. 
 1. For every group the add-on runs a **shairport-sync** receiver (classic AirPlay) named after the group. That is what your phone sees. It writes the received audio and track metadata to a named pipe under `/data/pipes`.
 2. A single **OwnTone** instance watches those pipes. When audio arrives it starts playing the pipe to whichever speakers are currently selected.
 3. When a receiver's session starts it calls the add-on, which selects exactly the group's speakers in OwnTone with their configured volumes. When the session ends the pipe closes and OwnTone stops.
+   Track details (title, artist, album, artwork) go through a small relay in the add-on rather than straight into OwnTone: shairport-sync sends them before the audio starts, at a moment OwnTone is not yet listening, so the relay remembers the current track and hands it to OwnTone when it starts reading. The now-playing card and OwnTone's own interface both show what is playing.
 4. OwnTone sends to the speakers over **AirPlay 2** (PTP-timed, so they stay in sync). Any speaker can be switched to AirPlay 1 in the group editor if it misbehaves.
 
 Only one group plays at a time. Starting a second group takes over: the first phone is disconnected and the new group's speakers are selected.
@@ -40,6 +41,7 @@ Editing a group's speakers restarts OwnTone briefly (a few seconds) to apply the
 - **Sonos** and most third-party AirPlay 2 speakers work as is. If one refuses to play, drops out, or has no volume control, tick *AirPlay 1 fallback* for it in the group editor.
 - **PTP ports**: AirPlay 2 sending needs UDP 319 and 320 on the host. Nothing on Home Assistant OS uses them by default, but another add-on or container doing AirPlay 2 (an AirPlay 2 receiver, or Music Assistant with AirPlay 2) will conflict. OwnTone logs a bind error if so.
 - **Speaker names** are matched exactly as OwnTone lists them. A group cannot have the same name as a real speaker.
+- **Chromecast** and other non-AirPlay outputs OwnTone discovers are hidden and cannot be put in a group: Chromecast does not keep sync with AirPlay, and a speaker that speaks both would otherwise be ambiguous. The Speakers card lists what was hidden.
 
 ## Volume
 

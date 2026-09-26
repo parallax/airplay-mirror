@@ -50,6 +50,11 @@ class Settings:
         return os.path.join(self.data_dir, "pipes")
 
     @property
+    def meta_dir(self) -> str:
+        """shairport-sync's raw metadata pipes live here, outside OwnTone's library so it never indexes them."""
+        return os.path.join(self.data_dir, "meta")
+
+    @property
     def owntone_dir(self) -> str:
         return os.path.join(self.data_dir, "owntone")
 

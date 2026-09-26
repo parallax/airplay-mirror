@@ -239,3 +239,30 @@ def test_sync_offsets_applied_on_select_and_preview(engine: Engine):
     assert engine.reapply() == [SelectOutputs([("1", 67), ("2", 100)])]
     engine.on_outputs([output("1", "Kitchen", offset_ms=0), output("2", "Terrace", offset_ms=0)])
     assert engine.reapply() == [SelectOutputs([("1", 67), ("2", 100)]), SetOffsets([("1", 80)])]
+
+
+def test_non_airplay_outputs_are_hidden(engine: Engine):
+    engine.on_outputs(
+        [
+            output("1", "Kitchen", type="AirPlay 2"),
+            output("7", "Kitchen", type="Chromecast"),
+            output("8", "Telly", type="Chromecast"),
+            output("2", "Terrace", type="AirPlay 1"),
+        ]
+    )
+    snap = engine.snapshot()
+    assert [(o["id"], o["name"]) for o in snap["outputs"]] == [("1", "Kitchen"), ("2", "Terrace")]
+    assert snap["hidden_outputs"] == ["Kitchen (Chromecast)", "Telly (Chromecast)"]
+    # resolution never lands on the Chromecast twin of a speaker
+    found, missing = engine.resolve(engine.groups["kitchen-terrace"])
+    assert [o.id for o, _ in found] == ["1", "2"] and missing == []
+
+
+def test_track_metadata_only_for_active_session(engine: Engine):
+    assert engine.on_track("bedroom", {"title": "x"}) == []
+    engine.on_hook_start("bedroom")
+    assert engine.on_track("kitchen-terrace", {"title": "x"}) == []
+    assert engine.session.track == {}
+    engine.on_track("bedroom", {"title": "Blue in Green", "artist": "Miles Davis", "album": "", "has_artwork": False})
+    assert engine.snapshot()["session"]["track"]["title"] == "Blue in Green"
+    assert engine.events[0]["message"] == "Now playing: Blue in Green \u2013 Miles Davis"

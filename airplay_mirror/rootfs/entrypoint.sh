@@ -3,7 +3,7 @@
 # Bonjour), then hand over to the controller which supervises the audio processes.
 set -eu
 
-mkdir -p /run/dbus /run/avahi-daemon /var/cache/owntone /data/pipes /data/owntone /data/shairport
+mkdir -p /run/dbus /run/avahi-daemon /var/cache/owntone /data/pipes /data/meta /data/owntone /data/shairport
 rm -f /run/dbus/pid /run/avahi-daemon/pid
 
 dbus-daemon --system --fork

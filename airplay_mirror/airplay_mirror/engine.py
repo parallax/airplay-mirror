@@ -109,6 +109,13 @@ class Session:
     queued_explicitly: bool = False
     warned: bool = False
     volume_pct: int = 100  # the phone's volume, 0-100; speaker levels are scaled by it
+    track: dict[str, Any] = field(default_factory=dict)  # title/artist/album from the metadata relay
+
+
+def is_airplay_output(output_type: str) -> bool:
+    """Only AirPlay outputs take part. Chromecast never syncs with AirPlay, and a speaker that speaks
+    both would otherwise appear once in the list with no way to tell which protocol you were picking."""
+    return output_type.strip().lower().startswith("airplay")
 
 
 def scale_levels(items: list[tuple[str, int]], pct: int) -> list[tuple[str, int]]:
@@ -145,6 +152,7 @@ class Engine:
         self.owntone_up = False
         self.pending_owntone_restart = False
         self.player_state = "stop"
+        self.hidden_outputs: list[str] = []  # non-AirPlay outputs OwnTone knows about, e.g. Chromecast
         self.events: deque[dict[str, Any]] = deque(maxlen=200)
 
     # ---- helpers ---------------------------------------------------------------------------------
@@ -250,7 +258,8 @@ class Engine:
     def on_outputs(self, raw: list[dict[str, Any]]) -> list[Action]:
         own = self.own_names()
         outputs = [Output.from_api(r) for r in raw]
-        self.outputs = {o.id: o for o in outputs if o.id and o.name.lower() not in own}
+        self.hidden_outputs = sorted(f"{o.name} ({o.type})" for o in outputs if not is_airplay_output(o.type))
+        self.outputs = {o.id: o for o in outputs if o.id and o.name.lower() not in own and is_airplay_output(o.type)}
         if not self.session or self.session.state == "pending_owntone":
             return []
         group = self.groups.get(self.session.group_id)
@@ -278,6 +287,17 @@ class Engine:
         found, _ = self.resolve(group)
         items = self._scaled(found)
         return [SetVolume(items)] if items else []
+
+    def on_track(self, group_id: str, track: dict[str, Any]) -> list[Action]:
+        """Track metadata from the relay: shown in the UI, never drives playback."""
+        if self.session is None or self.session.group_id != group_id:
+            return []
+        if track != self.session.track:
+            self.session.track = dict(track)
+            if track.get("title"):
+                who = f" – {track['artist']}" if track.get("artist") else ""
+                self.event(f"Now playing: {track['title']}{who}", "info", group_id)
+        return []
 
     def on_player(self, state: str, item_path: str | None = None) -> list[Action]:
         self.player_state = state
@@ -378,6 +398,7 @@ class Engine:
                 "state": self.session.state,
                 "started_at": self.session.started_at,
                 "volume_pct": self.session.volume_pct,
+                "track": dict(self.session.track),
                 "outputs": [self.outputs[i].as_dict() for i in self.session.output_ids if i in self.outputs],
                 "missing": list(self.session.missing),
             }
@@ -406,5 +427,6 @@ class Engine:
             "session": session,
             "groups": groups,
             "outputs": [o.as_dict() for o in sorted(self.outputs.values(), key=lambda o: o.name.lower())],
+            "hidden_outputs": list(self.hidden_outputs),
             "events": list(self.events),
         }

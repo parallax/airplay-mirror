@@ -6,93 +6,184 @@
 <title>AirPlay Mirror</title>
 <style>
   :root {
-    --bg: #f4f5f7; --card: #ffffff; --text: #1c1e21; --muted: #6b7280; --line: #e5e7eb;
-    --accent: #2563eb; --accent-text: #ffffff; --ok: #16a34a; --warn: #d97706; --err: #dc2626;
-    --chip: #eef2ff; --chip-text: #3730a3; --row-hover: #f9fafb;
+    --bg: #f5f5f7; --card: #ffffff; --field: #f2f2f7; --text: #1d1d1f; --text-2: #6e6e73; --text-3: #aeaeb2;
+    --sep: rgba(60, 60, 67, .14); --accent: #0071e3; --on-accent: #ffffff; --tint: rgba(0, 113, 227, .10);
+    --green: #34c759; --orange: #ff9500; --red: #ff3b30;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 4px 14px rgba(0, 0, 0, .04);
+    --hero: linear-gradient(135deg, #e8f1ff 0%, #f5f5f7 60%);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #111318; --card: #1b1e26; --text: #e6e8ee; --muted: #9aa3b2; --line: #2a2f3a;
-      --accent: #3b82f6; --ok: #22c55e; --warn: #f59e0b; --err: #ef4444;
-      --chip: #1e2a4a; --chip-text: #c7d2fe; --row-hover: #20242e;
+      --bg: #000000; --card: #1c1c1e; --field: #2c2c2e; --text: #f5f5f7; --text-2: #98989d; --text-3: #636366;
+      --sep: rgba(84, 84, 88, .55); --accent: #0a84ff; --tint: rgba(10, 132, 255, .18);
+      --green: #30d158; --orange: #ff9f0a; --red: #ff453a;
+      --shadow: none;
+      --hero: linear-gradient(135deg, #0f1f3a 0%, #1c1c1e 60%);
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
-  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-  h1 { font-size: 20px; margin: 0; display: flex; align-items: center; gap: 10px; }
-  h2 { font-size: 15px; margin: 0 0 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
-  .pill { display: inline-block; white-space: nowrap; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--chip); color: var(--chip-text); }
-  .pill.idle, .pill.online, .pill.running { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
-  .pill.playing { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
-  .pill.starting, .pill.pending { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
-  .pill.owntone_down, .pill.offline, .pill.stopped { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }
-  .pill.muted { background: var(--line); color: var(--muted); }
-  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
-  button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text); padding: 6px 12px; border-radius: 8px; cursor: pointer; }
-  button:hover { background: var(--row-hover); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-  button.danger { color: var(--err); }
-  button.small { padding: 2px 8px; font-size: 12px; }
-  button:disabled { opacity: .5; cursor: default; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; font-size: 12px; }
-  tr:hover td { background: var(--row-hover); }
-  td.num { white-space: nowrap; }
-  .muted { color: var(--muted); }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.47 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 28px 20px 48px; }
+  a { color: var(--accent); text-decoration: none; }
+  :focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 2px; border-radius: 8px; }
+
+  /* Header: large title, status underneath, actions to the right */
+  header { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: flex-end; justify-content: space-between; margin: 0 0 22px; }
+  h1 { font-size: 32px; line-height: 1.15; font-weight: 700; letter-spacing: -.02em; margin: 0; }
+  .status { display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; color: var(--text-2); font-size: 15px; }
+  .status::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--text-3); }
+  .status.idle::before { background: var(--green); }
+  .status.starting::before { background: var(--orange); }
+  .status.playing::before { background: var(--accent); box-shadow: 0 0 0 4px var(--tint); }
+  .status.owntone_down::before { background: var(--red); }
+
+  /* Buttons: capsules, three weights */
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button, .btn {
+    -webkit-appearance: none; appearance: none; display: inline-flex; align-items: center; gap: 6px;
+    font: inherit; font-size: 15px; font-weight: 500; line-height: 1; padding: 10px 16px; border-radius: 980px;
+    border: 0; cursor: pointer; background: var(--field); color: var(--accent); transition: filter .12s, transform .06s;
+  }
+  button:hover, .btn:hover { filter: brightness(.96); }
+  button:active, .btn:active { transform: scale(.98); }
+  button.primary { background: var(--accent); color: var(--on-accent); }
+  button.plain { background: transparent; color: var(--text-2); }
+  button.danger { color: var(--red); }
+  button.small, .btn.small { font-size: 13px; padding: 7px 12px; }
+  button:disabled { opacity: .35; cursor: default; filter: none; transform: none; }
+  .btn svg { width: 14px; height: 14px; }
+
+  /* Grouped cards (Settings-style insets) */
+  section.card { background: var(--card); border-radius: 16px; box-shadow: var(--shadow); padding: 18px 20px; margin-bottom: 18px; }
+  h2 { font-size: 20px; line-height: 1.25; font-weight: 600; letter-spacing: -.01em; margin: 0 0 12px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .toolbar h2 { margin: 0; }
+  .sub { color: var(--text-2); font-size: 13px; }
+  .muted { color: var(--text-2); }
+  .empty { color: var(--text-2); padding: 6px 0; }
+
+  /* Now playing: the one bold element on the page */
+  #now { background: var(--hero); }
+  #now.live { background: var(--hero); }
+  .np-title { font-size: 24px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+  .np-track { font-size: 16px; color: var(--text); margin-top: 2px; }
+  .np-track .by { color: var(--text-2); }
+  .np-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; color: var(--text-2); font-size: 13px; margin: 4px 0 12px; }
+  .eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+  .eq i { display: block; width: 3px; background: var(--accent); border-radius: 2px; height: 30%; }
+  .eq.on i { animation: eq 1s ease-in-out infinite; }
+  .eq.on i:nth-child(2) { animation-delay: -.35s; } .eq.on i:nth-child(3) { animation-delay: -.7s; }
+  @keyframes eq { 0%, 100% { height: 30%; } 50% { height: 100%; } }
+  @media (prefers-reduced-motion: reduce) { .eq.on i { animation: none; height: 70%; } }
+
+  /* Capsules for speakers */
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: var(--chip); color: var(--chip-text); }
-  .chip.offline { background: var(--line); color: var(--muted); text-decoration: line-through; }
-  .chip.online { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
-  input[type=text], input[type=search] { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); min-width: 220px; }
-  input[type=range] { width: 120px; vertical-align: middle; }
-  .log { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; max-height: 320px; overflow: auto; }
-  .log div { padding: 2px 0; border-bottom: 1px solid var(--line); }
-  .log .error { color: var(--err); } .log .warning { color: var(--warn); } .log .success { color: var(--ok); }
-  .empty { color: var(--muted); padding: 8px 0; }
-  .tablewrap { overflow-x: auto; }
-  #error { display: none; background: color-mix(in srgb, var(--err) 15%, transparent); color: var(--err); padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; }
-  .note { background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; }
-  .editor { border: 1px solid var(--accent); }
-  .editor .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
-  .editor label.speaker { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); }
-  .editor label.speaker .name { min-width: 180px; font-weight: 600; }
-  .editor .errors { color: var(--err); margin: 8px 0; }
-  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-  @media (max-width: 700px) { .hide-sm { display: none; } }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 980px; font-size: 13px; font-weight: 500; background: var(--field); color: var(--text); }
+  .chip.online { background: var(--tint); color: var(--accent); }
+  .chip.offline { color: var(--text-3); }
+  .chip.offline::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+  .tag { display: inline-block; white-space: nowrap; padding: 2px 8px; border-radius: 980px; font-size: 12px; font-weight: 600; color: var(--text-2); background: var(--field); vertical-align: middle; }
+  .tag.playing, .tag.online, .tag.running { color: var(--accent); background: var(--tint); }
+  .tag.pending, .tag.starting { color: var(--orange); background: color-mix(in srgb, var(--orange) 14%, transparent); }
+  .tag.stopped, .tag.offline { color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
+
+  /* Lists rendered as tables */
+  .tablewrap { overflow-x: auto; margin: 0 -20px; padding: 0 20px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 12px 10px 12px 0; border-bottom: 1px solid var(--sep); vertical-align: middle; }
+  th { color: var(--text-2); font-weight: 500; font-size: 13px; padding-top: 0; }
+  tr:last-child td { border-bottom: 0; }
+  td.num { white-space: nowrap; }
+  td.act { text-align: right; white-space: nowrap; }
+  .row-title { font-weight: 600; }
+  .row-sub { color: var(--text-2); font-size: 13px; }
+
+  /* Fields, switches, sliders */
+  input[type=text], input[type=number] {
+    -webkit-appearance: none; appearance: none; font: inherit; padding: 9px 12px; border: 0; border-radius: 10px;
+    background: var(--field); color: var(--text);
+  }
+  input[type=text] { min-width: 260px; }
+  input[type=number] { width: 84px; }
+  input[type=range] { accent-color: var(--accent); width: 150px; vertical-align: middle; }
+  .switch { position: relative; -webkit-appearance: none; appearance: none; width: 42px; height: 26px; border-radius: 980px; background: var(--text-3); cursor: pointer; transition: background .15s; flex: none; margin: 0; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: transform .15s; }
+  .switch:checked { background: var(--green); }
+  .switch:checked::after { transform: translateX(16px); }
+  .switch:disabled { opacity: .4; cursor: default; }
+  .switch.accent:checked { background: var(--accent); }
+  @media (prefers-reduced-motion: reduce) { .switch, .switch::after, button { transition: none; } }
+
+  /* Editor */
+  #editor { box-shadow: 0 0 0 1.5px var(--accent), var(--shadow); }
+  .editor-row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 14px; }
+  .speaker { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--sep); }
+  .speaker:last-child { border-bottom: 0; }
+  .speaker .name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .speaker .controls { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; color: var(--text-2); font-size: 13px; }
+  .speaker .controls label { display: inline-flex; align-items: center; gap: 8px; }
+  .speaker .sp-vol-v { display: inline-block; min-width: 2.2em; text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+  .errors { color: var(--red); margin: 8px 0 0; min-height: 1.4em; }
+
+  /* Banners */
+  .banner { padding: 12px 14px; border-radius: 12px; margin-bottom: 14px; font-size: 14px; }
+  #error { display: none; background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
+  .note { background: color-mix(in srgb, var(--orange) 14%, transparent); color: var(--text); }
+  .note.info { background: var(--tint); }
+
+  /* Log */
+  .log { font: 12.5px/1.6 ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; max-height: 320px; overflow: auto; }
+  .log div { padding: 3px 0; border-bottom: 1px solid var(--sep); }
+  .log div:last-child { border-bottom: 0; }
+  .log time { color: var(--text-3); margin-right: 8px; }
+  .log .error { color: var(--red); } .log .warning { color: var(--orange); } .log .success { color: var(--green); }
+
+  footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 8px; }
+  .show-sm { display: none; }
+  @media (max-width: 700px) {
+    .hide-sm { display: none; } .show-sm { display: inline-block; }
+    h1 { font-size: 28px; } main { padding: 20px 16px 40px; } section.card { padding: 16px; border-radius: 14px; }
+    input[type=text] { min-width: 0; width: 100%; }
+    td.act { white-space: normal; } td.act button { margin: 2px 0; }
+    th, td { padding-right: 8px; }
+  }
 </style>
 </head>
 <body>
 <main>
   <header>
-    <h1>AirPlay Mirror <span id="status" class="pill">…</span></h1>
+    <div>
+      <h1>AirPlay Mirror</h1>
+      <div id="status" class="status">Connecting</div>
+    </div>
     <div class="actions">
-      <button id="btn-stop" onclick="post('api/session/stop')">Stop session</button>
-      <button onclick="post('api/rescan')" title="Ask OwnTone to rescan its library (the pipes)">Rescan</button>
+      <button id="btn-stop" class="plain" onclick="post('api/session/stop')">Stop playback</button>
+      <button class="plain" onclick="post('api/rescan')" title="Ask OwnTone to rescan its library">Rescan</button>
       <button class="primary" onclick="openEditor(null)">Add group</button>
     </div>
   </header>
-  <div id="error"></div>
-  <div id="note" class="note" style="display:none"></div>
+  <div id="error" class="banner"></div>
+  <div id="note" class="banner note" style="display:none"></div>
 
   <section class="card" id="now">
-    <h2>Now playing</h2>
     <div id="session"></div>
   </section>
 
-  <section class="card editor" id="editor" style="display:none">
+  <section class="card" id="editor" style="display:none">
     <h2 id="editor-title">New group</h2>
-    <div class="note" id="editor-live" style="display:none">This group is playing now: volume sliders and sync offsets are applied to the speakers live, so you can balance them by ear. Levels are relative: the highest slider plays at your phone's volume and the others sit below it. Save keeps the settings; Cancel restores the old ones.</div>
-    <div class="row">
-      <label>Name <input type="text" id="g-name" placeholder="Kitchen + Terrace" maxlength="63"></label>
-      <span class="muted">This is the AirPlay speaker name your phone will see.</span>
+    <div class="banner note info" id="editor-live" style="display:none">This group is playing now, so volume and offset changes are applied to the speakers as you make them. Levels are relative: the highest slider plays at your phone's volume and the others sit below it. Save keeps the settings; Cancel restores the old ones.</div>
+    <div class="editor-row">
+      <input type="text" id="g-name" placeholder="Kitchen + Terrace" maxlength="63" aria-label="Group name">
+      <span class="sub">The speaker name your phone will see.</span>
     </div>
     <div id="g-speakers"></div>
     <div class="errors" id="g-errors"></div>
-    <div class="actions" style="margin-top:10px">
+    <div class="actions" style="margin-top:12px">
       <button class="primary" onclick="saveGroup()">Save</button>
       <button onclick="closeEditor(true)">Cancel</button>
     </div>
@@ -101,39 +192,43 @@
   <section class="card">
     <h2>Groups</h2>
     <div class="tablewrap"><table>
-      <thead><tr><th>Virtual speaker</th><th>Speakers</th><th class="hide-sm">Port</th><th>Receiver</th><th></th></tr></thead>
+      <thead><tr><th>Virtual speaker</th><th>Speakers</th><th class="hide-sm">Port</th><th class="hide-sm">Receiver</th><th></th></tr></thead>
       <tbody id="groups"></tbody>
     </table></div>
-    <div id="groups-empty" class="empty">No groups yet. Add one to advertise a virtual AirPlay speaker.</div>
+    <div id="groups-empty" class="empty">No groups yet. Add one and it appears in AirPlay on your phone within a few seconds.</div>
   </section>
 
   <section class="card">
     <div class="toolbar">
-      <h2 style="margin:0">Speakers seen by OwnTone</h2>
-      <span class="muted"><span id="owntone-info"></span> · <a id="owntone-link" href="#" target="_blank" rel="noopener">Open OwnTone's own UI</a></span>
+      <div><h2>Speakers</h2><div class="sub" id="owntone-info"></div></div>
+      <a id="owntone-link" class="btn small" href="#" target="_blank" rel="noopener">
+        Open OwnTone
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h8v8"/><path d="M13 3 4 12"/></svg>
+      </a>
     </div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Name</th><th class="hide-sm">Type</th><th>Selected</th><th class="hide-sm">Volume</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th class="hide-sm">Protocol</th><th class="hide-sm">Selected</th><th class="hide-sm">Volume</th><th></th></tr></thead>
       <tbody id="outputs"></tbody>
     </table></div>
-    <div id="outputs-empty" class="empty">No AirPlay speakers discovered yet.</div>
+    <div id="outputs-empty" class="empty">No AirPlay speakers found yet. They appear here as OwnTone discovers them.</div>
+    <div id="outputs-hidden" class="sub" style="margin-top:10px"></div>
   </section>
 
   <section class="card">
-    <h2>Log</h2>
+    <h2>Activity</h2>
     <div class="log" id="log"></div>
   </section>
 
-  <p class="muted" style="text-align:center">AirPlay Mirror <span id="version"></span></p>
+  <footer>AirPlay Mirror <span id="version"></span></footer>
 </main>
 
 <script>
 let snap = null;
 let editing = null;   // null = closed, '' = new, else group id
-let draft = null;     // {name, speakers: {name: {volume, airplay2, on}}}
+let draft = null;     // {name, speakers: {name: {volume, airplay2, offset, on}}}
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const STATUS_LABEL = { idle: 'Idle', starting: 'Starting', playing: 'Playing', owntone_down: 'OwnTone down' };
+const STATUS_LABEL = { idle: 'Ready', starting: 'Starting', playing: 'Playing', owntone_down: 'OwnTone is not responding' };
 
 function fmtClock(ts) { return new Date(ts * 1000).toLocaleTimeString(); }
 function fmtDuration(s) {
@@ -204,19 +299,21 @@ function renderEditor(force) {
   if (!force && key === editorKey) return;  // periodic refresh: keep the user's in-progress edits untouched
   editorKey = key;
   const box = $('g-speakers');
-  if (!list.length) { box.innerHTML = '<div class="empty">No speakers discovered yet. Wait for OwnTone to find them, or press Rescan.</div>'; return; }
+  if (!list.length) { box.innerHTML = '<div class="empty">No speakers found yet. Wait for OwnTone to discover them, or press Rescan.</div>'; return; }
   box.innerHTML = list.map((n, i) => {
     const d = draft.speakers[n] || { volume: 50, airplay2: true, offset: 0, on: false };
     const offline = !snap.outputs.some(o => o.name === n);
-    return `<label class="speaker" data-i="${i}">
-      <input type="checkbox" class="sp-on" ${d.on ? 'checked' : ''}>
-      <span class="name">${esc(n)}${offline ? ' <span class="pill offline">offline</span>' : ''}</span>
-      <span class="muted">Volume <input type="range" class="sp-vol" min="0" max="100" value="${d.volume}" ${d.on ? '' : 'disabled'}><span class="sp-vol-v">${d.volume}</span></span>
-      <span class="muted" title="Sync nudge: positive plays this speaker later, negative earlier">Offset <input type="number" class="sp-off" min="-2000" max="2000" step="10" value="${d.offset || 0}" ${d.on ? '' : 'disabled'} style="width:80px"> ms</span>
-      <span class="muted"><input type="checkbox" class="sp-ap1" ${d.airplay2 ? '' : 'checked'} ${d.on ? '' : 'disabled'}> AirPlay 1 fallback</span>
-    </label>`;
+    return `<div class="speaker" data-i="${i}">
+      <input type="checkbox" class="switch sp-on" ${d.on ? 'checked' : ''} aria-label="Include ${esc(n)}">
+      <div class="name">${esc(n)}${offline ? ' <span class="tag offline">offline</span>' : ''}</div>
+      <div class="controls">
+        <label>Volume <input type="range" class="sp-vol" min="0" max="100" value="${d.volume}" ${d.on ? '' : 'disabled'}><span class="sp-vol-v">${d.volume}</span></label>
+        <label title="Sync nudge: positive plays this speaker later, negative earlier">Offset <input type="number" class="sp-off" min="-2000" max="2000" step="10" value="${d.offset || 0}" ${d.on ? '' : 'disabled'}> ms</label>
+        <label><input type="checkbox" class="switch accent sp-ap1" ${d.airplay2 ? '' : 'checked'} ${d.on ? '' : 'disabled'}> AirPlay 1 fallback</label>
+      </div>
+    </div>`;
   }).join('');
-  box.querySelectorAll('label.speaker').forEach(row => {
+  box.querySelectorAll('.speaker').forEach(row => {
     const name = list[+row.dataset.i];
     const entry = () => draft.speakers[name] || (draft.speakers[name] = { volume: 50, airplay2: true, offset: 0, on: false });
     const vol = row.querySelector('.sp-vol'), ap1 = row.querySelector('.sp-ap1'), off = row.querySelector('.sp-off');
@@ -261,62 +358,73 @@ async function pair(id, name) {
 function render() {
   if (!snap) return;
   const s = snap;
-  const st = $('status'); st.className = 'pill ' + s.status; st.textContent = STATUS_LABEL[s.status] || s.status;
+  const st = $('status'); st.className = 'status ' + s.status; st.textContent = STATUS_LABEL[s.status] || s.status;
   $('version').textContent = s.version || '';
   $('btn-stop').disabled = !s.session;
 
   const notes = [];
-  if (!s.owntone_up) notes.push('OwnTone (the sender) is not responding. Check the add-on log.');
+  if (!s.owntone_up) notes.push('OwnTone, the part that sends audio to your speakers, is not responding. Check the add-on log.');
   if (s.pending_owntone_restart) notes.push('OwnTone will restart to pick up speaker changes as soon as playback stops.');
   if (!s.supervise) notes.push('Process supervision is off: this is a development instance.');
   $('note').textContent = notes.join(' '); $('note').style.display = notes.length ? '' : 'none';
 
-  // Session
-  if (!s.session) $('session').innerHTML = '<div class="empty">Nothing playing. Pick a virtual speaker from AirPlay on your phone.</div>';
-  else {
+  // Now playing
+  if (!s.session) {
+    $('session').innerHTML = `<div class="np-title">Nothing playing</div>
+      <div class="np-meta">Pick a group from AirPlay on your iPhone, iPad or Mac and it will show up here.</div>`;
+  } else {
     const se = s.session;
+    const playing = se.state === 'playing';
     const chips = se.outputs.map(o => `<span class="chip online">${esc(o.name)} · ${o.volume}%</span>`)
       .concat(se.missing.map(n => `<span class="chip offline">${esc(n)}</span>`)).join('');
-    $('session').innerHTML = `<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-        <strong>${esc(se.group_name)}</strong>
-        <span class="muted"><span class="pill ${se.state === 'playing' ? 'playing' : 'starting'}">${esc(se.state.replace('_', ' '))}</span> · for ${fmtDuration(s.now - se.started_at)} · OwnTone player: ${esc(s.player_state)}</span>
-      </div><div class="chips">${chips || '<span class="muted">no speakers online</span>'}</div>`;
+    const t = se.track || {};
+    const track = t.title ? `<div class="np-track">${esc(t.title)}${t.artist ? ` <span class="by">— ${esc(t.artist)}</span>` : ''}${t.album ? ` <span class="by">· ${esc(t.album)}</span>` : ''}</div>` : '';
+    $('session').innerHTML = `<div class="np-title">${esc(se.group_name)}</div>${track}
+      <div class="np-meta">
+        <span class="eq ${playing ? 'on' : ''}" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>${playing ? 'Playing' : esc(se.state.replace('_', ' '))} for ${fmtDuration(s.now - se.started_at)}</span>
+        <span>Phone volume ${se.volume_pct ?? 100}%</span>
+      </div><div class="chips">${chips || '<span class="muted">None of the group’s speakers are online.</span>'}</div>`;
   }
 
   // Groups
   $('groups-empty').style.display = s.groups.length ? 'none' : '';
   $('groups').innerHTML = s.groups.map(g => {
-    const chips = g.speakers.map(sp => `<span class="chip ${sp.online ? 'online' : 'offline'}" title="${sp.online ? 'online' : 'not currently seen by OwnTone'}">${esc(sp.name)} · ${sp.volume}%${sp.offset_ms ? ` · ${sp.offset_ms > 0 ? '+' : ''}${sp.offset_ms} ms` : ''}${sp.airplay2 ? '' : ' · AP1'}</span>`).join('');
+    const chips = g.speakers.map(sp => `<span class="chip ${sp.online ? 'online' : 'offline'}" title="${sp.online ? 'online' : 'not currently seen by OwnTone'}">${esc(sp.name)} · ${sp.volume}%${sp.offset_ms ? ` · ${sp.offset_ms > 0 ? '+' : ''}${sp.offset_ms} ms` : ''}${sp.airplay2 ? '' : ' · AirPlay 1'}</span>`).join('');
     const r = g.receiver || {};
-    const rs = !s.supervise ? '<span class="pill muted">n/a</span>' : r.running ? `<span class="pill running">running</span>${r.restarts ? ` <span class="muted">(${r.restarts} restarts)</span>` : ''}` : '<span class="pill stopped">stopped</span>';
+    const restarts = r.restarts ? `<div class="row-sub">${r.restarts === 1 ? 'restarted once' : `${r.restarts} restarts`}</div>` : '';
+    const rs = !s.supervise ? '<span class="tag">n/a</span>' : r.running ? `<span class="tag running">running</span>${restarts}` : '<span class="tag stopped">stopped</span>';
+    const rsSmall = s.supervise && !r.running ? ' <span class="tag stopped show-sm">stopped</span>' : '';
     return `<tr>
-      <td><strong>${esc(g.name)}</strong>${g.active ? ' <span class="pill playing">active</span>' : ''}<div class="muted" style="font-size:12px">${esc(g.id)}</div></td>
+      <td><span class="row-title">${esc(g.name)}</span>${g.active ? ' <span class="tag playing">playing</span>' : ''}${rsSmall}</td>
       <td><div class="chips">${chips}</div></td>
-      <td class="hide-sm num">${g.port}</td>
-      <td>${rs}</td>
-      <td class="num"><button class="small" onclick="openEditor('${esc(g.id)}')">Edit</button> <button class="small danger" onclick="deleteGroup('${esc(g.id)}', ${JSON.stringify(g.name).replace(/"/g, '&quot;')})">Delete</button></td>
+      <td class="hide-sm num row-sub">${g.port}</td>
+      <td class="hide-sm">${rs}</td>
+      <td class="act"><button class="small" onclick="openEditor('${esc(g.id)}')">Edit</button> <button class="small danger" onclick="deleteGroup('${esc(g.id)}', ${JSON.stringify(g.name).replace(/"/g, '&quot;')})">Delete</button></td>
     </tr>`;
   }).join('');
 
-  // Outputs
-  $('owntone-info').textContent = s.owntone_up ? `OwnTone on port ${s.settings.owntone_port}` : 'OwnTone is down';
+  // Speakers
+  $('owntone-info').textContent = s.owntone_up ? `Discovered by OwnTone on port ${s.settings.owntone_port}.` : 'OwnTone is not responding.';
   $('owntone-link').href = `${location.protocol === 'https:' ? 'http:' : location.protocol}//${location.hostname}:${s.settings.owntone_port}/`;
   $('outputs-empty').style.display = s.outputs.length ? 'none' : '';
+  $('outputs-hidden').textContent = (s.hidden_outputs || []).length
+    ? `Not AirPlay, so not available for groups: ${s.hidden_outputs.join(', ')}` : '';
   $('outputs').innerHTML = s.outputs.map(o => `<tr>
-      <td>${esc(o.name)}${o.needs_auth_key ? ' <span class="pill pending">needs pairing</span>' : ''}${o.requires_auth ? ' <span class="pill muted">password</span>' : ''}</td>
-      <td class="hide-sm muted">${esc(o.type)}</td>
-      <td>${o.selected ? '<span class="pill online">selected</span>' : '<span class="muted">–</span>'}</td>
-      <td class="hide-sm num">${o.volume}</td>
-      <td class="num">
+      <td><span class="row-title">${esc(o.name)}</span>${o.needs_auth_key ? ' <span class="tag pending">needs pairing</span>' : ''}${o.requires_auth ? ' <span class="tag">password</span>' : ''}${o.selected ? ' <span class="tag online show-sm">selected</span>' : ''}</td>
+      <td class="hide-sm row-sub">${esc(o.type)}</td>
+      <td class="hide-sm">${o.selected ? '<span class="tag online">selected</span>' : '<span class="row-sub">–</span>'}</td>
+      <td class="hide-sm num row-sub">${o.volume}</td>
+      <td class="act">
         ${o.needs_auth_key ? `<button class="small primary" onclick="pair('${esc(o.id)}', ${JSON.stringify(o.name).replace(/"/g, '&quot;')})">Pair</button> ` : ''}
         <button class="small" onclick="post('api/outputs/${esc(o.id)}/select', {selected: ${!o.selected}})">${o.selected ? 'Deselect' : 'Select'}</button>
       </td></tr>`).join('');
 
   if (draft != null) { renderEditor(); $('editor-live').style.display = editingActive() ? '' : 'none'; }
 
-  // Log
+  // Activity
   $('log').innerHTML = s.events.slice(0, 200).map(e =>
-    `<div class="${e.level}"><span class="muted">${fmtClock(e.ts)}</span> ${e.group ? '<strong>' + esc(e.group) + '</strong> ' : ''}${esc(e.message)}</div>`).join('') || '<div class="empty">Nothing yet.</div>';
+    `<div class="${e.level}"><time>${fmtClock(e.ts)}</time>${e.group ? '<strong>' + esc(e.group) + '</strong> ' : ''}${esc(e.message)}</div>`).join('') || '<div class="empty">Nothing yet.</div>';
 }
 
 refresh();

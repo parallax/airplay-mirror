@@ -32,7 +32,7 @@ async def main_async(options_path: str | None) -> int:
     logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
     log = logging.getLogger("airplay_mirror")
     log.info("AirPlay Mirror %s starting (data in %s)", __version__, settings.data_dir)
-    for d in (settings.pipes_dir, settings.owntone_dir, settings.shairport_dir):
+    for d in (settings.pipes_dir, settings.meta_dir, settings.owntone_dir, settings.shairport_dir):
         Path(d).mkdir(parents=True, exist_ok=True)
 
     engine = Engine(settings)

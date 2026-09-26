@@ -49,7 +49,7 @@ pipe = {
 metadata = {
   enabled = "yes";
   include_cover_art = "yes";
-  pipe_name = "$pipe.metadata";
+  pipe_name = "$meta";
   pipe_timeout = 5000;
 };
 
@@ -99,6 +99,10 @@ def pipe_path(settings: Settings, group: Group) -> str:
     return os.path.join(settings.pipes_dir, group.id)
 
 
+def meta_path(settings: Settings, group: Group) -> str:
+    return os.path.join(settings.meta_dir, group.id)
+
+
 def shairport_conf_path(settings: Settings, group_id: str) -> str:
     return os.path.join(settings.shairport_dir, f"{group_id}.conf")
 
@@ -111,6 +115,7 @@ def render_shairport_conf(settings: Settings, group: Group) -> str:
         udp_port_base=settings.udp_port_base + group.slot * 10,
         offset=group.slot,
         pipe=libconfig_escape(pipe_path(settings, group)),
+        meta=libconfig_escape(meta_path(settings, group)),
         hook=libconfig_escape(settings.hook_script),
         verbosity=1 if settings.log_level == "debug" else 0,
     )
@@ -162,6 +167,7 @@ class ConfigSet:
     owntone_conf: str
     shairport_confs: dict[str, str]  # group_id -> file contents
     pipes: dict[str, str]  # group_id -> fifo path
+    metas: dict[str, str]  # group_id -> shairport-sync's raw metadata fifo path
 
 
 @dataclass
@@ -177,6 +183,7 @@ def build_config_set(settings: Settings, groups: list[Group]) -> ConfigSet:
         owntone_conf=render_owntone_conf(settings, groups),
         shairport_confs={g.id: render_shairport_conf(settings, g) for g in groups},
         pipes={g.id: pipe_path(settings, g) for g in groups},
+        metas={g.id: meta_path(settings, g) for g in groups},
     )
 
 
@@ -238,4 +245,13 @@ def write_config_set(settings: Settings, cs: ConfigSet) -> ConfigDiff:
         if base not in cs.pipes and not entry.name.startswith("."):
             entry.unlink(missing_ok=True)
             diff.removed_groups.add(base)
+
+    meta_dir = Path(settings.meta_dir)
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    for path in cs.metas.values():
+        _ensure_fifo(path)
+    for entry in meta_dir.iterdir():
+        if entry.name not in cs.metas and not entry.name.startswith("."):
+            entry.unlink(missing_ok=True)
+            diff.removed_groups.add(entry.name)
     return diff

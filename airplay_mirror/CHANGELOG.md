@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.5
+
+- Track title, artist, album and artwork now reach OwnTone (and the now-playing card): shairport-sync sends them before OwnTone starts listening, so a relay in the add-on remembers the current track and replays it.
+- Redesigned interface in Apple's idiom: large title, grouped cards, capsule buttons, switches, a proper now-playing card, light and dark themes, and a phone-friendly layout. The OwnTone link is now a button.
+- Hide Chromecast and other non-AirPlay outputs: they cannot be added to groups, and speakers that speak both protocols are no longer ambiguous. The Speakers card lists what was hidden.
+
 ## 0.1.4
 
 - Per-speaker sync offsets (-2000..2000 ms) in the group editor, applied live while playing.
