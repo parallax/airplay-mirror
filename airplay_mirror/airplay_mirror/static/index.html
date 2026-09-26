@@ -174,33 +174,42 @@ function openEditor(groupId) {
   $('g-name').value = draft.name;
   $('g-errors').textContent = '';
   $('editor').style.display = '';
-  renderEditor();
+  renderEditor(true);
   $('g-name').focus();
 }
-function closeEditor() { editing = null; draft = null; $('editor').style.display = 'none'; }
-function renderEditor() {
+function closeEditor() { editing = null; draft = null; editorKey = ''; $('editor').style.display = 'none'; }
+let editorKey = '';  // which speaker names are currently rendered, to avoid needless re-renders
+function renderEditor(force) {
   if (draft == null) return;
   const names = new Set(snap.outputs.map(o => o.name));
   for (const n of Object.keys(draft.speakers)) names.add(n);
   const list = [...names].sort((a, b) => a.localeCompare(b));
-  if (!list.length) { $('g-speakers').innerHTML = '<div class="empty">No speakers discovered yet. Wait for OwnTone to find them, or press Rescan.</div>'; return; }
-  $('g-speakers').innerHTML = list.map(n => {
+  const key = list.join('\u0000');
+  if (!force && key === editorKey) return;  // periodic refresh: keep the user's in-progress edits untouched
+  editorKey = key;
+  const box = $('g-speakers');
+  if (!list.length) { box.innerHTML = '<div class="empty">No speakers discovered yet. Wait for OwnTone to find them, or press Rescan.</div>'; return; }
+  box.innerHTML = list.map((n, i) => {
     const d = draft.speakers[n] || { volume: 50, airplay2: true, on: false };
     const offline = !snap.outputs.some(o => o.name === n);
-    return `<label class="speaker">
-      <input type="checkbox" ${d.on ? 'checked' : ''} onchange="toggleSpeaker(this, ${JSON.stringify(n)})">
+    return `<label class="speaker" data-i="${i}">
+      <input type="checkbox" class="sp-on" ${d.on ? 'checked' : ''}>
       <span class="name">${esc(n)}${offline ? ' <span class="pill offline">offline</span>' : ''}</span>
-      <span class="muted">Volume <input type="range" min="0" max="100" value="${d.volume}" ${d.on ? '' : 'disabled'}
-        oninput="draft.speakers[${JSON.stringify(n)}].volume = +this.value; this.nextElementSibling.textContent = this.value"><span>${d.volume}</span></span>
-      <span class="muted"><input type="checkbox" ${d.airplay2 ? '' : 'checked'} ${d.on ? '' : 'disabled'}
-        onchange="draft.speakers[${JSON.stringify(n)}].airplay2 = !this.checked"> AirPlay 1 fallback</span>
+      <span class="muted">Volume <input type="range" class="sp-vol" min="0" max="100" value="${d.volume}" ${d.on ? '' : 'disabled'}><span class="sp-vol-v">${d.volume}</span></span>
+      <span class="muted"><input type="checkbox" class="sp-ap1" ${d.airplay2 ? '' : 'checked'} ${d.on ? '' : 'disabled'}> AirPlay 1 fallback</span>
     </label>`;
   }).join('');
-}
-function toggleSpeaker(cb, name) {
-  const d = draft.speakers[name] || (draft.speakers[name] = { volume: 50, airplay2: true, on: false });
-  d.on = cb.checked;
-  renderEditor();
+  box.querySelectorAll('label.speaker').forEach(row => {
+    const name = list[+row.dataset.i];
+    const entry = () => draft.speakers[name] || (draft.speakers[name] = { volume: 50, airplay2: true, on: false });
+    const vol = row.querySelector('.sp-vol'), ap1 = row.querySelector('.sp-ap1');
+    row.querySelector('.sp-on').addEventListener('change', e => {
+      entry().on = e.target.checked;
+      vol.disabled = ap1.disabled = !e.target.checked;
+    });
+    vol.addEventListener('input', e => { entry().volume = +e.target.value; row.querySelector('.sp-vol-v').textContent = e.target.value; });
+    ap1.addEventListener('change', e => { entry().airplay2 = !e.target.checked; });
+  });
 }
 async function saveGroup() {
   draft.name = $('g-name').value;

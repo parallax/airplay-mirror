@@ -36,6 +36,7 @@ class Runner:
         self._stop = asyncio.Event()
         self._tasks: list[asyncio.Task] = []
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._known_outputs: set[str] | None = None
 
     # ---- lifecycle ---------------------------------------------------------------------------------
 
@@ -51,8 +52,12 @@ class Runner:
             ready = await self.client.wait_ready(self.settings.owntone_ready_timeout)
             if not ready:
                 log.error("OwnTone did not become ready in %ss; carrying on", self.settings.owntone_ready_timeout)
+            else:
+                log.info("OwnTone is ready on %s", self.settings.owntone_url)
             await self.execute(self.engine.on_owntone_state(ready))
             await self.refresh_outputs()
+            if not groups:
+                log.info("No groups defined yet: open the add-on panel and add one")
             for group in groups:
                 await self.supervisor.start(self._receiver_spec(group))
                 await asyncio.sleep(0.3)
@@ -161,6 +166,10 @@ class Runner:
             log.debug("outputs: %s", exc)
             return
         await self.execute(self.engine.on_outputs(outputs))
+        names = {o.name for o in self.engine.outputs.values()}
+        if names != self._known_outputs:
+            self._known_outputs = names
+            log.info("AirPlay speakers seen by OwnTone: %s", ", ".join(sorted(names)) or "none yet")
 
     async def pair(self, output_id: str, pin: str) -> None:
         await self.client.update_output(output_id, pin=pin)

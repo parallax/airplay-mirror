@@ -39,6 +39,9 @@ COPY airplay_mirror ./airplay_mirror
 COPY rootfs/ /
 RUN chmod 755 /entrypoint.sh /usr/local/bin/am-hook
 
-HEALTHCHECK NONE
+# The Supervisor keeps an app in "starting" until its container reports healthy (an inherited
+# HEALTHCHECK NONE still counts as a healthcheck), so report on our own web endpoint.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -sf http://127.0.0.1:8099/api/health || exit 1
 EXPOSE 8099
 ENTRYPOINT ["/entrypoint.sh"]
