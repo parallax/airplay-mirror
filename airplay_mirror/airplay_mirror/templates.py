@@ -28,8 +28,8 @@ general = {
   mdns_backend = "avahi";
   output_backend = "pipe";
   airplay_device_id_offset = $offset;
-  ignore_volume_control = "no";
-  volume_range_db = 60;
+  ignore_volume_control = "yes";
+  run_this_when_volume_is_set = "$hook volume $id";
   playback_mode = "stereo";
   interpolation = "auto";
 };

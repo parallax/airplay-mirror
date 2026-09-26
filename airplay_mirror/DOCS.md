@@ -43,7 +43,9 @@ Editing a group's speakers restarts OwnTone briefly (a few seconds) to apply the
 
 ## Volume
 
-The phone's volume slider is applied by the receiver before the audio reaches OwnTone, so it behaves as expected. The per-speaker levels in a group set the speakers' own volumes when the group starts, which is how you balance a loud speaker against a quiet one.
+The phone's volume slider is forwarded straight to the speakers: the receiver passes the audio through at full scale and reports each volume change to the add-on, which sets the speakers' own volumes in OwnTone immediately. That avoids the delay you would get if the volume were baked into the audio before it goes through OwnTone's buffer.
+
+The per-speaker levels in a group are the speaker's volume at 100% on the phone; lower phone volumes scale them down proportionally. Use them to balance a loud speaker against a quiet one.
 
 ## Running outside Home Assistant
 

@@ -26,6 +26,11 @@ class SelectOutputs:
 
 
 @dataclass
+class SetVolume:
+    items: list[tuple[str, int]]  # (output id, volume 0-100)
+
+
+@dataclass
 class PlayPipe:
     group_id: str
 
@@ -45,7 +50,7 @@ class Rescan:
     pass
 
 
-Action = SelectOutputs | PlayPipe | StopPlayer | RestartReceiver | Rescan
+Action = SelectOutputs | SetVolume | PlayPipe | StopPlayer | RestartReceiver | Rescan
 
 
 # ---- state ---------------------------------------------------------------------------------------
@@ -95,6 +100,18 @@ class Session:
     verify_at: float | None = None
     queued_explicitly: bool = False
     warned: bool = False
+    volume_pct: int = 100  # the phone's volume, 0-100; speaker levels are scaled by it
+
+
+def airplay_db_to_pct(value: float | str | None) -> int | None:
+    """Map shairport-sync's AirPlay volume (0.0 .. -30.0 dB, -144.0 = mute) to 0-100."""
+    try:
+        db = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if db <= -144.0:
+        return 0
+    return max(0, min(100, round((db + 30.0) / 30.0 * 100)))
 
 
 class Engine:
@@ -140,7 +157,11 @@ class Engine:
             self.event(f"Not available right now: {', '.join(missing)}", "warning", group.id)
         if not found:
             self.event("None of the group's speakers are online; audio will be discarded", "error", group.id)
-        return [SelectOutputs([(o.id, vol) for o, vol in found])]
+        return [SelectOutputs(self._scaled(found))]
+
+    def _scaled(self, found: list[tuple[Output, int]]) -> list[tuple[str, int]]:
+        pct = self.session.volume_pct if self.session else 100
+        return [(o.id, round(level * pct / 100)) for o, level in found]
 
     def status(self) -> str:
         if not self.owntone_up:
@@ -176,8 +197,21 @@ class Engine:
             self.event(f"Back online, joining: {', '.join(joined)}", "success", group.id)
             self.session.output_ids = [o.id for o, _ in found]
             self.session.missing = missing
-            return [SelectOutputs([(o.id, vol) for o, vol in found])]
+            return [SelectOutputs(self._scaled(found))]
         return []
+
+    def on_volume(self, group_id: str, value: float | str | None) -> list[Action]:
+        """The phone moved its volume slider: push the new level to the group's speakers right away."""
+        pct = airplay_db_to_pct(value)
+        if pct is None or self.session is None or self.session.group_id != group_id:
+            return []
+        self.session.volume_pct = pct
+        group = self.groups.get(group_id)
+        if group is None or self.session.state == "pending_owntone":
+            return []
+        found, _ = self.resolve(group)
+        items = self._scaled(found)
+        return [SetVolume(items)] if items else []
 
     def on_player(self, state: str, item_path: str | None = None) -> list[Action]:
         self.player_state = state
@@ -277,6 +311,7 @@ class Engine:
                 "group_name": group.name if group else self.session.group_id,
                 "state": self.session.state,
                 "started_at": self.session.started_at,
+                "volume_pct": self.session.volume_pct,
                 "outputs": [self.outputs[i].as_dict() for i in self.session.output_ids if i in self.outputs],
                 "missing": list(self.session.missing),
             }

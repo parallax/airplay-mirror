@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from airplay_mirror.engine import Engine, PlayPipe, RestartReceiver, SelectOutputs, StopPlayer
+from airplay_mirror.engine import (
+    Engine,
+    PlayPipe,
+    RestartReceiver,
+    SelectOutputs,
+    SetVolume,
+    StopPlayer,
+    airplay_db_to_pct,
+)
 from airplay_mirror.groups import Group, Speaker
 from airplay_mirror.templates import pipe_path
 from tests.conftest import GROUPS, KITCHEN_TERRACE, output
@@ -149,3 +157,34 @@ def test_snapshot_shape(engine: Engine):
     assert g["port"] == 5000 and g["active"] is True
     assert [(s["name"], s["online"]) for s in g["speakers"]] == [("Kitchen", True), ("Terrace", False)]
     assert snap["outputs"][0]["name"] == "Kitchen"
+
+
+def test_airplay_db_to_pct():
+    assert airplay_db_to_pct("0.0") == 100
+    assert airplay_db_to_pct("-30.0") == 0
+    assert airplay_db_to_pct("-15.0") == 50
+    assert airplay_db_to_pct(-144.0) == 0
+    assert airplay_db_to_pct("garbage") is None
+    assert airplay_db_to_pct(None) is None
+
+
+def test_volume_hook_scales_speaker_levels(engine: Engine):
+    engine.on_hook_start("kitchen-terrace")
+    assert engine.on_volume("bedroom", "-15.0") == []  # not the active group
+    assert engine.on_volume("kitchen-terrace", "-15.0") == [SetVolume([("1", 20), ("2", 30)])]
+    assert engine.session.volume_pct == 50
+    assert engine.on_volume("kitchen-terrace", "-144") == [SetVolume([("1", 0), ("2", 0)])]
+    assert engine.on_volume("kitchen-terrace", "nope") == []
+    # later selections (late join, OwnTone restart) keep the phone's volume applied
+    engine.on_volume("kitchen-terrace", "-15.0")
+    engine.on_outputs([output("1", "Kitchen")])
+    engine.on_hook_start("kitchen-terrace")  # fresh session resets to 100%
+    assert engine.session.volume_pct == 100
+
+
+def test_late_join_uses_current_volume(engine: Engine):
+    engine.on_outputs([output("1", "Kitchen")])
+    engine.on_hook_start("kitchen-terrace")
+    engine.on_volume("kitchen-terrace", "-15.0")
+    actions = engine.on_outputs([output("1", "Kitchen"), output("2", "Terrace")])
+    assert actions == [SelectOutputs([("1", 20), ("2", 30)])]

@@ -1,4 +1,7 @@
 #!/bin/sh
-# Called by shairport-sync session hooks: am-hook <start|stop> <group_id>
-# Tells the controller a session started or ended so it can select the group's speakers.
-exec curl -s -m 5 -o /dev/null -X POST "http://127.0.0.1:${AM_WEB_PORT:-8099}/api/hook/$2/$1"
+# Called by shairport-sync hooks: am-hook <start|stop|volume> <group_id> [value]
+# start/stop: a session began or ended, so the controller selects/deselects the group's speakers.
+# volume: shairport-sync appends the AirPlay volume (0.0 to -30.0 dB, -144.0 = mute); it is
+#         forwarded straight to the speakers so the phone's slider takes effect immediately.
+exec curl -s -m 3 -o /dev/null -X POST -H 'Content-Type: application/json' \
+  -d "{\"value\": \"${3:-}\"}" "http://127.0.0.1:${AM_WEB_PORT:-8099}/api/hook/$2/$1"

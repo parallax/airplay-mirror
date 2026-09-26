@@ -140,6 +140,15 @@ async def test_hook_selects_outputs_and_is_loopback_only(client):
     assert data["status"] == "starting"
     assert data["session"]["group_name"] == "Kitchen + Terrace"
 
+    client.fake.calls.clear()
+    r = await client.post("/api/hook/kitchen-terrace/volume", json={"value": "-15.0"})
+    assert r.status == 200
+    assert ("update_output", "1", None, 20, None) in client.fake.calls
+    assert ("update_output", "2", None, 25, None) in client.fake.calls
+    r = await client.post("/api/hook/kitchen-terrace/volume?value=-144.0")
+    assert r.status == 200
+    assert ("update_output", "1", None, 0, None) in client.fake.calls
+
     r = await client.post("/api/hook/kitchen-terrace/stop")
     assert r.status == 200
     assert ("stop",) in client.fake.calls

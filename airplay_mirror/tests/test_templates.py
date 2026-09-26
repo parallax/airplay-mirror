@@ -25,6 +25,8 @@ def test_shairport_conf(settings):
     assert 'run_this_before_play_begins = "/usr/local/bin/am-hook start bedroom";' in text
     assert 'run_this_after_play_ends = "/usr/local/bin/am-hook stop bedroom";' in text
     assert 'wait_for_completion = "yes";' in text
+    assert 'ignore_volume_control = "yes";' in text
+    assert 'run_this_when_volume_is_set = "/usr/local/bin/am-hook volume bedroom";' in text
     assert "log_verbosity = 0;" in text
 
 

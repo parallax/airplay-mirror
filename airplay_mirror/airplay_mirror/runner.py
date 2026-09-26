@@ -8,7 +8,7 @@ import logging
 from typing import Any
 
 from .config import Settings
-from .engine import Action, Engine, PlayPipe, Rescan, RestartReceiver, SelectOutputs, StopPlayer
+from .engine import Action, Engine, PlayPipe, Rescan, RestartReceiver, SelectOutputs, SetVolume, StopPlayer
 from .groups import Group, GroupStore
 from .owntone import OwnToneClient, OwnToneError
 from .procs import ProcSpec, Supervisor
@@ -140,10 +140,12 @@ class Runner:
 
     # ---- session events ----------------------------------------------------------------------------
 
-    async def hook(self, group_id: str, kind: str) -> None:
+    async def hook(self, group_id: str, kind: str, value: str | None = None) -> None:
         async with self.lock:
             if kind == "start":
                 actions = self.engine.on_hook_start(group_id)
+            elif kind == "volume":
+                actions = self.engine.on_volume(group_id, value)
             else:
                 actions = self.engine.on_hook_stop(group_id)
             await self.execute(actions)
@@ -199,6 +201,10 @@ class Runner:
             for output_id, volume in action.items:
                 await self.client.update_output(output_id, selected=True, volume=volume)
             log.info("Selected outputs %s", ids)
+        elif isinstance(action, SetVolume):
+            for output_id, volume in action.items:
+                await self.client.update_output(output_id, volume=volume)
+            log.debug("Volume set: %s", action.items)
         elif isinstance(action, PlayPipe):
             group = self.engine.groups.get(action.group_id)
             if group is None:

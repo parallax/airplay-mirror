@@ -171,10 +171,17 @@ async def hook(request: web.Request) -> web.Response:
     if request.remote not in LOOPBACK:
         raise web.HTTPForbidden(text="hooks are accepted from localhost only")
     kind = request.match_info["kind"]
-    if kind not in ("start", "stop"):
-        raise web.HTTPBadRequest(text="kind must be start or stop")
+    if kind not in ("start", "stop", "volume"):
+        raise web.HTTPBadRequest(text="kind must be start, stop or volume")
     group_id = request.match_info["group_id"]
-    task = asyncio.ensure_future(runner.hook(group_id, kind))
+    value = request.query.get("value")
+    if value is None and request.can_read_body:
+        try:
+            body = await request.json()
+            value = str(body.get("value")) if isinstance(body, dict) and body.get("value") is not None else None
+        except Exception:  # noqa: BLE001
+            value = None
+    task = asyncio.ensure_future(runner.hook(group_id, kind, value))
     try:
         await asyncio.wait_for(asyncio.shield(task), timeout=runner.settings.hook_timeout_seconds)
     except TimeoutError:
