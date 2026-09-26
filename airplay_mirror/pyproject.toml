@@ -1,6 +1,6 @@
 [project]
 name = "airplay-mirror"
-version = "0.1.6"
+version = "0.1.7"
 description = "Virtual AirPlay speakers that relay audio to groups of real AirPlay speakers"
 readme = "DOCS.md"
 license = { text = "MIT" }

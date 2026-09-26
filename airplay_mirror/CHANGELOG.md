@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.7
+
+- Fix cover art only appearing from the second track: a picture the phone sends just before the track's metadata bundle is now kept with that track, and art is replayed to OwnTone after the bundle.
+
 ## 0.1.6
 
 - MQTT: publishes what's playing (retained state and artwork topics), accepts stop/rescan/volume commands, and creates Home Assistant entities via discovery. Uses the Mosquitto add-on automatically.

@@ -58,7 +58,8 @@ def test_track_state_commits_on_mden_and_replays():
     replay = st.replay()
     assert replay.startswith(ssnc_item("mdst")) and b"Blue in Green" not in replay  # base64-encoded
     assert base64.b64encode(b"Blue in Green") in replay
-    assert replay.count(b"<item>") == 7  # mdst, 3 core, PICT, mden, pvol
+    assert replay.count(b"<item>") == 7  # mdst, 3 core, mden, PICT, pvol
+    assert replay.index(ssnc_item("mden")) < replay.index(b"PICT".hex().encode())  # picture after the bundle
     # a partial update outside a bundle (e.g. a lone title) is applied directly
     assert [st.observe(i) for i in p.feed(item(CORE, "minm", b"So What"))] == [True]
     assert st.info().title == "So What"
@@ -110,3 +111,29 @@ async def test_relay_replays_current_track_when_reader_appears(tmp_path):
     os.close(r)
     stop.set()
     await task
+
+
+def test_picture_sent_before_its_bundle_is_kept():
+    p, st = MetadataParser(), TrackState()
+    png = b"\x89PNG\r\n\x1a\nfirst"
+    for i in p.feed(item(SSNC, "PICT", png) + BUNDLE):
+        st.observe(i)
+    assert st.info().title == "Blue in Green" and st.artwork()[0] == png
+    # next track: bundle first, then its own picture, as phones do on track change
+    png2 = b"\x89PNG\r\n\x1a\nsecond"
+    for i in p.feed(ssnc_item("mdst") + item(CORE, "minm", b"So What") + ssnc_item("mden")):
+        st.observe(i)
+    assert st.info().title == "So What" and st.artwork() is None  # old art is not carried over
+    for i in p.feed(item(SSNC, "PICT", png2)):
+        st.observe(i)
+    assert st.artwork()[0] == png2
+    # a bundle that carries its own picture wins over an early one
+    for i in p.feed(
+        item(SSNC, "PICT", png)
+        + ssnc_item("mdst")
+        + item(CORE, "minm", b"X")
+        + item(SSNC, "PICT", png2)
+        + ssnc_item("mden")
+    ):
+        st.observe(i)
+    assert st.artwork()[0] == png2

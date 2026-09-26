@@ -110,6 +110,7 @@ class TrackState:
         self.current: dict[str, Item] = {}
         self.pending: dict[str, Item] | None = None
         self.volume: Item | None = None
+        self._early_pict: Item | None = None  # a picture that arrived before its track's bundle
 
     def observe(self, item: Item) -> bool:
         """Record an item. Returns True when the visible track info may have changed."""
@@ -120,6 +121,10 @@ class TrackState:
                 return False
             if name == "mden":
                 if self.pending is not None:
+                    # Phones often send the artwork just before the bundle it belongs to; keep it.
+                    if "PICT" not in self.pending and self._early_pict is not None:
+                        self.pending["PICT"] = self._early_pict
+                    self._early_pict = None
                     self.current = self.pending
                     self.pending = None
                     return True
@@ -131,8 +136,11 @@ class TrackState:
                 target = self.pending if self.pending is not None else self.current
                 if item.data:
                     target["PICT"] = item
+                    if self.pending is None:
+                        self._early_pict = item
                 else:
                     target.pop("PICT", None)
+                    self._early_pict = None
                 return self.pending is None
             return False
         if item.type == CORE:
@@ -142,11 +150,16 @@ class TrackState:
         return False
 
     def replay(self) -> bytes:
+        """The current track as a bundle, then the picture, then the volume: the order phones use live."""
         out = bytearray()
-        if self.current:
+        core = [i for name, i in self.current.items() if name != "PICT"]
+        if core:
             out += ssnc_item("mdst")
-            out += b"".join(i.raw for i in self.current.values())
+            out += b"".join(i.raw for i in core)
             out += ssnc_item("mden")
+        pict = self.current.get("PICT")
+        if pict is not None:
+            out += pict.raw
         if self.volume is not None:
             out += self.volume.raw
         return bytes(out)
