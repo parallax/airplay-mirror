@@ -180,7 +180,23 @@ class Engine:
             self.event("Group removed while playing; stopping", "warning", self.session.group_id)
             self.session = None
             return [StopPlayer()]
-        return []
+        # The playing group may have been edited: apply its new speakers/levels right away.
+        return self.reapply()
+
+    def reapply(self) -> list[Action]:
+        """Re-select the active group's speakers with the stored levels (and the phone's volume)."""
+        if self.session is None or self.session.state == "pending_owntone":
+            return []
+        group = self.groups.get(self.session.group_id)
+        if group is None:
+            return []
+        return self._select_actions(group)
+
+    def preview_volume(self, output_id: str, level: int) -> list[Action]:
+        """Live preview from the group editor: set one speaker to ``level`` scaled by the phone's volume."""
+        level = max(0, min(100, int(level)))
+        pct = self.session.volume_pct if self.session else 100
+        return [SetVolume([(output_id, round(level * pct / 100))])]
 
     def on_outputs(self, raw: list[dict[str, Any]]) -> list[Action]:
         own = self.own_names()

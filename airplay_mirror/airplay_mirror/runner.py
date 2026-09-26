@@ -181,6 +181,13 @@ class Runner:
         await self.client.update_output(output_id, selected=selected)
         await self.refresh_outputs()
 
+    async def preview_volume(self, output_id: str, level: int) -> None:
+        await self.execute(self.engine.preview_volume(output_id, level))
+
+    async def reapply(self) -> None:
+        async with self.lock:
+            await self.execute(self.engine.reapply())
+
     async def rescan(self) -> None:
         await self.client.rescan()
 

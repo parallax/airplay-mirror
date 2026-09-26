@@ -186,6 +186,23 @@ async def test_pair_and_select(client):
     assert ("update_output", "1", True, None, None) in client.fake.calls
 
 
+async def test_volume_preview_and_reapply(client):
+    await client.post(
+        "/api/groups", json={"name": "Kitchen + Terrace", "speakers": [{"name": "Kitchen", "volume": 40}]}
+    )
+    await client.post("/api/hook/kitchen-terrace/start")
+    client.fake.calls.clear()
+    r = await client.post("/api/outputs/1/volume", json={"level": 70})
+    assert r.status == 200
+    assert ("update_output", "1", None, 70, None) in client.fake.calls
+    r = await client.post("/api/outputs/1/volume", json={"level": "loud"})
+    assert r.status == 400
+    client.fake.calls.clear()
+    r = await client.post("/api/session/reapply")
+    assert r.status == 200
+    assert ("update_output", "1", True, 40, None) in client.fake.calls
+
+
 async def test_session_stop_and_rescan(client):
     await client.post("/api/groups", json={"name": "Bedroom Zone", "speakers": ["Bedroom"]})
     await client.post("/api/hook/bedroom-zone/start")

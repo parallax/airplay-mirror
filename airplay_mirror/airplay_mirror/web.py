@@ -35,6 +35,8 @@ def build_app(runner: Runner) -> web.Application:
             web.put("/api/groups/{id}", groups_update),
             web.delete("/api/groups/{id}", groups_delete),
             web.post("/api/outputs/{id}/select", output_select),
+            web.post("/api/outputs/{id}/volume", output_volume),
+            web.post("/api/session/reapply", session_reapply),
             web.post("/api/outputs/{id}/pair", output_pair),
             web.post("/api/session/stop", session_stop),
             web.post("/api/rescan", rescan),
@@ -150,6 +152,25 @@ async def output_pair(request: web.Request) -> web.Response:
     if not pin:
         raise web.HTTPBadRequest(text="pin is required")
     await runner.pair(request.match_info["id"], pin)
+    return web.json_response({"ok": True})
+
+
+async def output_volume(request: web.Request) -> web.Response:
+    """Live volume preview from the group editor."""
+    runner: Runner = request.app[RUNNER]
+    body = await _json(request)
+    try:
+        level = int(body.get("level"))
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(text="level must be an integer 0-100") from None
+    await runner.preview_volume(request.match_info["id"], level)
+    return web.json_response({"ok": True})
+
+
+async def session_reapply(request: web.Request) -> web.Response:
+    """Restore the active group's stored speaker levels (e.g. after cancelling an edit)."""
+    runner: Runner = request.app[RUNNER]
+    await runner.reapply()
     return web.json_response({"ok": True})
 
 

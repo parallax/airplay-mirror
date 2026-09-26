@@ -85,6 +85,7 @@
 
   <section class="card editor" id="editor" style="display:none">
     <h2 id="editor-title">New group</h2>
+    <div class="note" id="editor-live" style="display:none">This group is playing now: volume sliders are applied to the speakers live, so you can balance them by ear. Save keeps the levels; Cancel restores the old ones.</div>
     <div class="row">
       <label>Name <input type="text" id="g-name" placeholder="Kitchen + Terrace" maxlength="63"></label>
       <span class="muted">This is the AirPlay speaker name your phone will see.</span>
@@ -93,7 +94,7 @@
     <div class="errors" id="g-errors"></div>
     <div class="actions" style="margin-top:10px">
       <button class="primary" onclick="saveGroup()">Save</button>
-      <button onclick="closeEditor()">Cancel</button>
+      <button onclick="closeEditor(true)">Cancel</button>
     </div>
   </section>
 
@@ -177,7 +178,22 @@ function openEditor(groupId) {
   renderEditor(true);
   $('g-name').focus();
 }
-function closeEditor() { editing = null; draft = null; editorKey = ''; $('editor').style.display = 'none'; }
+function editingActive() { return !!(editing && snap && snap.session && snap.session.group_id === editing); }
+function closeEditor(cancelled) {
+  const restore = cancelled && editingActive();
+  editing = null; draft = null; editorKey = ''; $('editor').style.display = 'none'; $('editor-live').style.display = 'none';
+  if (restore) post('api/session/reapply');
+}
+const previewTimers = {};
+function previewVolume(name, level) {
+  if (!editingActive()) return;
+  const out = snap.outputs.find(o => o.name === name);
+  if (!out) return;
+  clearTimeout(previewTimers[name]);
+  previewTimers[name] = setTimeout(() => {
+    fetch(`api/outputs/${encodeURIComponent(out.id)}/volume`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level }) }).catch(() => {});
+  }, 120);
+}
 let editorKey = '';  // which speaker names are currently rendered, to avoid needless re-renders
 function renderEditor(force) {
   if (draft == null) return;
@@ -207,7 +223,10 @@ function renderEditor(force) {
       entry().on = e.target.checked;
       vol.disabled = ap1.disabled = !e.target.checked;
     });
-    vol.addEventListener('input', e => { entry().volume = +e.target.value; row.querySelector('.sp-vol-v').textContent = e.target.value; });
+    vol.addEventListener('input', e => {
+      entry().volume = +e.target.value; row.querySelector('.sp-vol-v').textContent = e.target.value;
+      if (entry().on) previewVolume(name, +e.target.value);
+    });
     ap1.addEventListener('change', e => { entry().airplay2 = !e.target.checked; });
   });
 }
@@ -285,7 +304,7 @@ function render() {
         <button class="small" onclick="post('api/outputs/${esc(o.id)}/select', {selected: ${!o.selected}})">${o.selected ? 'Deselect' : 'Select'}</button>
       </td></tr>`).join('');
 
-  if (draft != null) renderEditor();
+  if (draft != null) { renderEditor(); $('editor-live').style.display = editingActive() ? '' : 'none'; }
 
   // Log
   $('log').innerHTML = s.events.slice(0, 200).map(e =>

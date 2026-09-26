@@ -188,3 +188,21 @@ def test_late_join_uses_current_volume(engine: Engine):
     engine.on_volume("kitchen-terrace", "-15.0")
     actions = engine.on_outputs([output("1", "Kitchen"), output("2", "Terrace")])
     assert actions == [SelectOutputs([("1", 20), ("2", 30)])]
+
+
+def test_editing_the_playing_group_reapplies_levels(engine: Engine):
+    engine.on_hook_start("kitchen-terrace")
+    engine.on_volume("kitchen-terrace", "-15.0")
+    edited = Group(id="kitchen-terrace", name="Kitchen + Terrace", slot=0, speakers=[Speaker("Kitchen", 80)])
+    assert engine.set_groups([edited]) == [SelectOutputs([("1", 40)])]
+    assert engine.reapply() == [SelectOutputs([("1", 40)])]
+    engine.on_hook_stop("kitchen-terrace")
+    assert engine.reapply() == []
+
+
+def test_preview_volume_scales_by_phone_volume(engine: Engine):
+    assert engine.preview_volume("1", 80) == [SetVolume([("1", 80)])]
+    engine.on_hook_start("kitchen-terrace")
+    engine.on_volume("kitchen-terrace", "-15.0")
+    assert engine.preview_volume("1", 80) == [SetVolume([("1", 40)])]
+    assert engine.preview_volume("1", 500) == [SetVolume([("1", 50)])]
