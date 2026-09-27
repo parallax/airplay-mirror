@@ -52,7 +52,7 @@ Editing a group's speakers restarts OwnTone briefly (a few seconds) to apply the
 
 The phone's volume slider is forwarded straight to the speakers: the receiver passes the audio through at full scale and reports each volume change to the add-on, which sets the speakers' own volumes in OwnTone immediately. That avoids the delay you would get if the volume were baked into the audio before it goes through OwnTone's buffer.
 
-The per-speaker levels in a group are a balance, relative to the loudest speaker: the speaker with the highest level plays at exactly the phone's volume and the others sit below it in proportion (levels 40 and 60 mean the first plays at two thirds of the second). This is the same master/relative model OwnTone uses internally, so the two never disagree. While the group is playing, open *Edit* and the sliders change the speakers live, so you can balance by ear. *Save* keeps the levels, *Cancel* restores the previous ones.
+The per-speaker levels in a group are a mix, not absolute volumes. The loudest speaker always plays at exactly the phone's volume and counts as 100; the others are a share of it (a speaker at 67 plays at two thirds of the phone's volume). Raising the loudest speaker therefore makes the others relatively quieter, so the natural way to balance is to leave the loudest at 100 and pull the rest down. Levels are tidied to that shape when you save, and the editor shows what each slider means while you drag. This is the same master/relative model OwnTone uses internally, so the two never disagree. While the group is playing, open *Edit* and the sliders change the speakers live, so you can balance by ear. *Save* keeps the levels, *Cancel* restores the previous ones.
 
 ## MQTT and Home Assistant entities
 

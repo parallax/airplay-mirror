@@ -77,6 +77,16 @@ def unique_slug(name: str, taken: set[str]) -> str:
     return slug
 
 
+def normalise_levels(speakers: list[Speaker]) -> list[Speaker]:
+    """Scale levels so the loudest speaker is 100: levels are a share of the phone's volume."""
+    top = max((s.volume for s in speakers), default=0)
+    if top <= 0:
+        return speakers
+    for s in speakers:
+        s.volume = round(s.volume * 100 / top)
+    return speakers
+
+
 def parse_speakers(raw: Any) -> list[Speaker]:
     if not isinstance(raw, list):
         raise GroupError(["speakers must be a list"])
@@ -178,7 +188,10 @@ class GroupStore:
         if errors:
             raise GroupError(errors)
         group = Group(
-            id=unique_slug(name, {g.id for g in self._groups}), name=name, slot=self._free_slot(), speakers=speakers
+            id=unique_slug(name, {g.id for g in self._groups}),
+            name=name,
+            slot=self._free_slot(),
+            speakers=normalise_levels(speakers),
         )
         self._groups.append(group)
         self.save()
@@ -197,7 +210,7 @@ class GroupStore:
         if errors:
             raise GroupError(errors)
         group.name = name
-        group.speakers = speakers
+        group.speakers = normalise_levels(speakers)
         self.save()
         return group
 

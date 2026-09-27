@@ -41,7 +41,8 @@ def test_round_trip(tmp_path):
     fresh = GroupStore(path)
     groups = fresh.load()
     assert len(groups) == 1
-    assert groups[0].speakers[1] == Speaker("Terrace", 60, airplay2=False)
+    assert groups[0].speakers[0] == Speaker("Kitchen", 67)  # normalised: 40/60
+    assert groups[0].speakers[1] == Speaker("Terrace", 100, airplay2=False)
     assert fresh.get("kitchen-terrace") is groups[0] or fresh.get("kitchen-terrace").id == "kitchen-terrace"
 
 
@@ -80,3 +81,14 @@ def test_parse_speakers():
         parse_speakers("Kitchen")
     with pytest.raises(GroupError):
         parse_speakers([{"name": "Kitchen", "volume": "loud"}])
+
+
+def test_levels_are_normalised_on_save(tmp_path):
+    from airplay_mirror.groups import normalise_levels
+
+    store = GroupStore(str(tmp_path / "groups.json"))
+    g = store.create("Mix", [Speaker("A", 40), Speaker("B", 60), Speaker("C", 0)])
+    assert [s.volume for s in g.speakers] == [67, 100, 0]
+    g = store.update(g.id, "Mix", [Speaker("A", 30)])
+    assert g.speakers[0].volume == 100  # a lone speaker always plays at the phone's volume
+    assert [s.volume for s in normalise_levels([Speaker("A", 0), Speaker("B", 0)])] == [0, 0]

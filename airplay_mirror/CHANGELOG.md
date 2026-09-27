@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.8
+
+- Group levels are normalised on save so the loudest speaker is always 100, and the editor explains the mix and shows each slider's share of the phone's volume as you drag.
+
 ## 0.1.7
 
 - Fix cover art only appearing from the second track: a picture the phone sends just before the track's metadata bundle is now kept with that track, and art is replayed to OwnTone after the bundle.

@@ -116,7 +116,7 @@ async def test_group_crud_and_validation(client):
     )
     assert r.status == 200
     assert (await r.json())["group"]["speakers"] == [
-        {"name": "Kitchen", "volume": 50, "airplay2": False, "offset_ms": 0}
+        {"name": "Kitchen", "volume": 100, "airplay2": False, "offset_ms": 0}
     ]
 
     r = await client.put("/api/groups/nope", json={"name": "X", "speakers": ["Kitchen"]})

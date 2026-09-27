@@ -131,6 +131,9 @@
   .speaker .controls { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; color: var(--text-2); font-size: 13px; }
   .speaker .controls label { display: inline-flex; align-items: center; gap: 8px; }
   .speaker .sp-vol-v { display: inline-block; min-width: 2.2em; text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+  .speaker .sp-eff { color: var(--text-2); font-variant-numeric: tabular-nums; }
+  .speaker .sp-eff.top { color: var(--accent); font-weight: 600; }
+  .help { color: var(--text-2); font-size: 13px; margin: 0 0 12px; max-width: 70ch; }
   .errors { color: var(--red); margin: 8px 0 0; min-height: 1.4em; }
 
   /* Banners */
@@ -179,11 +182,12 @@
 
   <section class="card" id="editor" style="display:none">
     <h2 id="editor-title">New group</h2>
-    <div class="banner note info" id="editor-live" style="display:none">This group is playing now, so volume and offset changes are applied to the speakers as you make them. Levels are relative: the highest slider plays at your phone's volume and the others sit below it. Save keeps the settings; Cancel restores the old ones.</div>
+    <div class="banner note info" id="editor-live" style="display:none">This group is playing now, so level and offset changes are applied to the speakers as you make them. Save keeps the settings; Cancel restores the old ones.</div>
     <div class="editor-row">
       <input type="text" id="g-name" placeholder="Kitchen + Terrace" maxlength="63" aria-label="Group name">
       <span class="sub">The speaker name your phone will see.</span>
     </div>
+    <p class="help">Levels are a mix, not absolute volumes. The loudest speaker always plays at your phone's volume and counts as 100%; the others are a share of it. Raising the loudest speaker makes the others relatively quieter, so leave it at 100 and pull the rest down. Levels are tidied to that shape when you save.</p>
     <div id="g-speakers"></div>
     <div class="errors" id="g-errors"></div>
     <div class="actions" style="margin-top:12px">
@@ -310,7 +314,8 @@ function renderEditor(force) {
       <input type="checkbox" class="switch sp-on" ${d.on ? 'checked' : ''} aria-label="Include ${esc(n)}">
       <div class="name">${esc(n)}${offline ? ' <span class="tag offline">offline</span>' : ''}</div>
       <div class="controls">
-        <label>Volume <input type="range" class="sp-vol" min="0" max="100" value="${d.volume}" ${d.on ? '' : 'disabled'}><span class="sp-vol-v">${d.volume}</span></label>
+        <label>Level <input type="range" class="sp-vol" min="0" max="100" value="${d.volume}" ${d.on ? '' : 'disabled'}><span class="sp-vol-v">${d.volume}</span></label>
+        <span class="sp-eff"></span>
         <label title="Sync nudge: positive plays this speaker later, negative earlier">Offset <input type="number" class="sp-off" min="-2000" max="2000" step="10" value="${d.offset || 0}" ${d.on ? '' : 'disabled'}> ms</label>
         <label><input type="checkbox" class="switch accent sp-ap1" ${d.airplay2 ? '' : 'checked'} ${d.on ? '' : 'disabled'}> AirPlay 1 fallback</label>
       </div>
@@ -323,6 +328,7 @@ function renderEditor(force) {
     row.querySelector('.sp-on').addEventListener('change', e => {
       entry().on = e.target.checked;
       vol.disabled = ap1.disabled = off.disabled = !e.target.checked;
+      updateEffective();
       previewVolume();
     });
     off.addEventListener('change', e => {
@@ -332,9 +338,26 @@ function renderEditor(force) {
     });
     vol.addEventListener('input', e => {
       entry().volume = +e.target.value; row.querySelector('.sp-vol-v').textContent = e.target.value;
+      updateEffective();
       if (entry().on) previewVolume();
     });
     ap1.addEventListener('change', e => { entry().airplay2 = !e.target.checked; });
+  });
+  updateEffective();
+}
+function updateEffective() {
+  if (draft == null) return;
+  const on = Object.entries(draft.speakers).filter(([, d]) => d.on);
+  const top = Math.max(0, ...on.map(([, d]) => d.volume));
+  document.querySelectorAll('#g-speakers .speaker').forEach(row => {
+    const name = [...new Set([...snap.outputs.map(o => o.name), ...Object.keys(draft.speakers)])].sort((a, b) => a.localeCompare(b))[+row.dataset.i];
+    const d = draft.speakers[name];
+    const el = row.querySelector('.sp-eff');
+    if (!d || !d.on || top <= 0) { el.textContent = ''; el.className = 'sp-eff'; return; }
+    const share = Math.round(d.volume * 100 / top);
+    const isTop = d.volume === top;
+    el.textContent = isTop ? (on.length > 1 ? '= phone volume (loudest)' : '= phone volume') : `= ${share}% of phone volume`;
+    el.className = 'sp-eff' + (isTop ? ' top' : '');
   });
 }
 async function saveGroup() {
