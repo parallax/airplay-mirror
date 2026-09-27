@@ -3,6 +3,7 @@ from __future__ import annotations
 from airplay_mirror.engine import (
     Engine,
     PlayPipe,
+    ResendMetadata,
     RestartReceiver,
     SelectOutputs,
     SetOffsets,
@@ -266,3 +267,14 @@ def test_track_metadata_only_for_active_session(engine: Engine):
     engine.on_track("bedroom", {"title": "Blue in Green", "artist": "Miles Davis", "album": "", "has_artwork": False})
     assert engine.snapshot()["session"]["track"]["title"] == "Blue in Green"
     assert engine.events[0]["message"] == "Now playing: Blue in Green \u2013 Miles Davis"
+
+
+def test_new_queue_item_triggers_metadata_resend(engine: Engine, settings):
+    engine.on_hook_start("bedroom")
+    path = pipe_path(settings, engine.groups["bedroom"])
+    assert engine.on_player("play", path, 2) == []  # first item: nothing to resend yet
+    assert engine.session.state == "playing" and engine.session.item_id == 2
+    assert engine.on_player("play", path, 2) == []
+    assert engine.on_player("play", path, 3) == [ResendMetadata("bedroom")]  # OwnTone re-queued the pipe
+    assert engine.on_player("pause", path, 3) == []
+    assert engine.on_player("play", "/other", 9) == []  # something else playing: not ours

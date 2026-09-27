@@ -55,7 +55,12 @@ class Rescan:
     pass
 
 
-Action = SelectOutputs | SetVolume | SetOffsets | PlayPipe | StopPlayer | RestartReceiver | Rescan
+@dataclass
+class ResendMetadata:
+    group_id: str  # OwnTone started a fresh queue item: give it the current track again
+
+
+Action = SelectOutputs | SetVolume | SetOffsets | PlayPipe | StopPlayer | RestartReceiver | Rescan | ResendMetadata
 
 
 # ---- state ---------------------------------------------------------------------------------------
@@ -110,6 +115,7 @@ class Session:
     warned: bool = False
     volume_pct: int = 100  # the phone's volume, 0-100; speaker levels are scaled by it
     track: dict[str, Any] = field(default_factory=dict)  # title/artist/album from the metadata relay
+    item_id: int | None = None  # OwnTone's queue item currently playing our pipe
 
 
 def is_airplay_output(output_type: str) -> bool:
@@ -313,17 +319,24 @@ class Engine:
                 self.event(f"Now playing: {track['title']}{who}", "info", group_id)
         return []
 
-    def on_player(self, state: str, item_path: str | None = None) -> list[Action]:
+    def on_player(self, state: str, item_path: str | None = None, item_id: int | None = None) -> list[Action]:
         self.player_state = state
         if self.session is None or self.session.state == "pending_owntone":
             return []
         group = self.groups.get(self.session.group_id)
         expected = pipe_path(self.settings, group) if group else None
-        if state == "play" and (item_path is None or expected is None or item_path == expected):
+        ours = item_path is None or expected is None or item_path == expected
+        actions: list[Action] = []
+        if state in ("play", "pause") and ours:
             if self.session.state != "playing":
                 self.session.state = "playing"
                 self.event("Playing", "success", self.session.group_id)
-        return []
+            if item_id is not None and item_id != self.session.item_id:
+                if self.session.item_id is not None:
+                    # OwnTone re-queued the pipe (new queue item): its metadata starts blank again.
+                    actions.append(ResendMetadata(self.session.group_id))
+                self.session.item_id = item_id
+        return actions
 
     def on_owntone_state(self, up: bool) -> list[Action]:
         was_up = self.owntone_up

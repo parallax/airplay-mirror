@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.9
+
+- Fix OwnTone and the speakers showing the group's pipe name instead of the track: the add-on's "playback did not start" fallback could re-queue a pipe that had in fact just started, which discarded the queue item holding the metadata. The fallback now checks first, and the relay re-sends the track whenever OwnTone starts a fresh queue item, on play/resume, or when its reader reopens.
+- Cover art over roughly 1 MB (common with Apple Music) crashed OwnTone's metadata reader for the rest of the session. Big pictures are shrunk before they go to OwnTone and oversized items are never forwarded; the panel and MQTT keep the full-size picture.
+
 ## 0.1.8
 
 - Group levels are normalised on save so the loudest speaker is always 100, and the editor explains the mix and shows each slider's share of the phone's volume as you drag.

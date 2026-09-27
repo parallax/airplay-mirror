@@ -20,6 +20,7 @@ import hashlib
 import logging
 import os
 import re
+import select
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -28,6 +29,13 @@ log = logging.getLogger(__name__)
 
 CORE = 0x636F7265  # 'core': DMAP items from the source (minm, asar, asal, ...)
 SSNC = 0x73736E63  # 'ssnc': shairport-sync's own items (mdst, mden, pvol, PICT, ...)
+
+# OwnTone's pipe reader dies for the rest of the session on an item its XML parser cannot swallow,
+# which happens with multi-megabyte cover art (Apple Music routinely sends 1-3 MB). It also caps
+# pictures at 1 MB itself. So OwnTone gets a shrunk copy of big artwork and never an oversized item.
+OWNTONE_PICT_MAX = 400_000  # decoded bytes; larger pictures are shrunk for OwnTone
+OWNTONE_ITEM_MAX = 900_000  # raw item bytes; anything larger is not forwarded at all
+ARTWORK_SIDE = 800  # px, when shrinking
 
 ITEM_RE = re.compile(
     rb"<item><type>([0-9a-fA-F]+)</type><code>([0-9a-fA-F]+)</code><length>(\d+)</length>"
@@ -45,16 +53,64 @@ def ssnc_item(name: str) -> bytes:
     return f"<item><type>{SSNC:x}</type><code>{code:x}</code><length>0</length></item>\n".encode()
 
 
+def make_item(type_: int, code: int, data: bytes) -> bytes:
+    """An item in shairport-sync's pipe format, base64 on one line like shairport-sync writes it."""
+    head = f"<item><type>{type_:x}</type><code>{code:x}</code><length>{len(data)}</length>".encode()
+    return head + b'\n<data encoding="base64">\n' + base64.b64encode(data) + b"</data></item>\n"
+
+
+def shrink_artwork(data: bytes, side: int = ARTWORK_SIDE) -> bytes | None:
+    """Re-encode a picture as a JPEG no larger than side x side. None if Pillow is missing or it fails."""
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+    except ImportError:
+        return None
+    try:
+        with Image.open(BytesIO(data)) as im:
+            im = im.convert("RGB")
+            im.thumbnail((side, side))
+            out = BytesIO()
+            im.save(out, format="JPEG", quality=85, optimize=True)
+            return out.getvalue()
+    except Exception as exc:  # noqa: BLE001
+        log.debug("could not shrink artwork: %s", exc)
+        return None
+
+
 @dataclass
 class Item:
     type: int
     code: int
     raw: bytes
     data: bytes | None
+    _for_owntone: bytes | None = None
+    _for_owntone_done: bool = False
 
     @property
     def name(self) -> str:
         return fourcc(self.code)
+
+    def for_owntone(self) -> bytes | None:
+        """What to write to OwnTone for this item: the raw item, a shrunk picture, or nothing."""
+        if self._for_owntone_done:
+            return self._for_owntone
+        self._for_owntone_done = True
+        out: bytes | None = self.raw
+        if self.type == SSNC and self.name == "PICT" and self.data and len(self.data) > OWNTONE_PICT_MAX:
+            small = shrink_artwork(self.data)
+            if small is not None and len(small) <= OWNTONE_PICT_MAX:
+                log.info("Shrunk %d-byte cover art to %d bytes for OwnTone", len(self.data), len(small))
+                out = make_item(self.type, self.code, small)
+            else:
+                log.info("Not forwarding %d-byte cover art to OwnTone (too large to shrink)", len(self.data))
+                out = None
+        if out is not None and len(out) > OWNTONE_ITEM_MAX:
+            log.info("Not forwarding a %d-byte %s item to OwnTone (too large)", len(out), self.name)
+            out = None
+        self._for_owntone = out
+        return out
 
 
 class MetadataParser:
@@ -155,11 +211,11 @@ class TrackState:
         core = [i for name, i in self.current.items() if name != "PICT"]
         if core:
             out += ssnc_item("mdst")
-            out += b"".join(i.raw for i in core)
+            out += b"".join(i.for_owntone() or b"" for i in core)
             out += ssnc_item("mden")
         pict = self.current.get("PICT")
         if pict is not None:
-            out += pict.raw
+            out += pict.for_owntone() or b""
         if self.volume is not None:
             out += self.volume.raw
         return bytes(out)
@@ -235,6 +291,17 @@ class MetadataRelay:
             self._disconnect()
             self._close_src()
 
+    def resend(self) -> None:
+        """Send the current track again (e.g. OwnTone started a fresh queue item)."""
+        if self._dst_fd is None:
+            self._try_connect()  # a connect replays by itself
+            return
+        self._check_reader()
+        if self._dst_fd is not None:
+            self._enqueue(self.state.replay())
+        else:
+            self._try_connect()
+
     # ---- source side -------------------------------------------------------------------------------
 
     def _readable(self) -> None:
@@ -251,7 +318,13 @@ class MetadataRelay:
         for item in self.parser.feed(chunk):
             changed = self.state.observe(item)
             if self._dst_fd is not None:
-                self._enqueue(item.raw)
+                forward = item.for_owntone()
+                if forward:
+                    self._enqueue(forward)
+                if item.type == SSNC and item.name in ("pbeg", "prsm"):
+                    # Playback (re)starts: OwnTone may have reopened its reader with a fresh state,
+                    # so send the current track again. Cheap, and harmless if it already had it.
+                    self._enqueue(self.state.replay())
             if changed and self.on_track:
                 try:
                     self.on_track(self.group_id, self.state.info())
@@ -272,6 +345,7 @@ class MetadataRelay:
 
     def _try_connect(self) -> None:
         if self._dst_fd is not None:
+            self._check_reader()
             return
         try:
             fd = os.open(self.dst, os.O_WRONLY | os.O_NONBLOCK)
@@ -281,8 +355,23 @@ class MetadataRelay:
             return
         self._dst_fd = fd
         self._out = bytearray(self.state.replay())
-        log.debug("[%s] OwnTone is reading metadata; replaying %d bytes", self.group_id, len(self._out))
+        log.info(
+            "[%s] OwnTone is reading metadata; replaying the current track (%d bytes)", self.group_id, len(self._out)
+        )
         self._drain()
+
+    def _check_reader(self) -> None:
+        """A FIFO whose reader has gone reports POLLERR on the write end; drop it so the next open replays."""
+        assert self._dst_fd is not None
+        try:
+            poller = select.poll()
+            poller.register(self._dst_fd, select.POLLERR | select.POLLHUP)
+            events = poller.poll(0)
+        except (OSError, ValueError):
+            events = [(self._dst_fd, select.POLLERR)]
+        if any(ev & (select.POLLERR | select.POLLHUP) for _, ev in events):
+            log.info("[%s] OwnTone stopped reading metadata", self.group_id)
+            self._disconnect()
 
     def _enqueue(self, raw: bytes) -> None:
         self._out += raw
@@ -299,6 +388,7 @@ class MetadataRelay:
                     self._writer_armed = True
                 return
             except OSError:  # EPIPE: OwnTone stopped reading
+                log.info("[%s] OwnTone stopped reading metadata", self.group_id)
                 self._disconnect()
                 return
             del self._out[:n]

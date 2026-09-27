@@ -8,7 +8,18 @@ import logging
 from typing import Any
 
 from .config import Settings
-from .engine import Action, Engine, PlayPipe, Rescan, RestartReceiver, SelectOutputs, SetOffsets, SetVolume, StopPlayer
+from .engine import (
+    Action,
+    Engine,
+    PlayPipe,
+    Rescan,
+    ResendMetadata,
+    RestartReceiver,
+    SelectOutputs,
+    SetOffsets,
+    SetVolume,
+    StopPlayer,
+)
 from .groups import Group, GroupStore
 from .metadata import MetadataRelay, TrackInfo
 from .owntone import OwnToneClient, OwnToneError
@@ -269,11 +280,27 @@ class Runner:
             for output_id, ms in action.items:
                 await self.client.update_output(output_id, offset_ms=ms)
             log.info("Sync offsets set: %s", action.items)
+        elif isinstance(action, ResendMetadata):
+            entry = self._relays.get(action.group_id)
+            if entry is not None:
+                entry[0].resend()
         elif isinstance(action, PlayPipe):
             group = self.engine.groups.get(action.group_id)
             if group is None:
                 return
             path = pipe_path(self.settings, group)
+            # Never re-queue a pipe OwnTone is already playing: clearing the queue would throw away
+            # the queue item that holds the track metadata.
+            try:
+                player = await self.client.player()
+                item_id = player.get("item_id")
+                current = await self.client.queue_item_path(item_id)
+            except OwnToneError:
+                player, item_id, current = {}, None, None
+            if current == path and str(player.get("state")) in ("play", "pause"):
+                log.info("Pipe %s is already playing (queue item %s); not re-queueing", path, item_id)
+                await self.execute(self.engine.on_player(str(player.get("state")), current, item_id))
+                return
             for attempt in range(3):
                 track_id = await self.client.find_track_id(path)
                 if track_id is not None:
@@ -311,13 +338,14 @@ class Runner:
             player = await self.client.player()
             state = str(player.get("state", "stop"))
             path = None
-            if state == "play":
+            item_id = player.get("item_id") or None
+            if state in ("play", "pause"):
                 with contextlib.suppress(OwnToneError):
-                    path = await self.client.queue_item_path(player.get("item_id"))
+                    path = await self.client.queue_item_path(item_id)
         except OwnToneError as exc:
             log.debug("player: %s", exc)
             return
-        await self.execute(self.engine.on_player(state, path))
+        await self.execute(self.engine.on_player(state, path, item_id))
 
     async def _ticker(self) -> None:
         n = 0
@@ -325,6 +353,14 @@ class Runner:
             await asyncio.sleep(1)
             n += 1
             try:
+                se = self.engine.session
+                if (
+                    se is not None
+                    and se.state == "starting"
+                    and se.verify_at is not None
+                    and self.engine.now() >= se.verify_at
+                ):
+                    await self._poll_player()
                 async with self.lock:
                     await self.execute(self.engine.tick())
                     if self.engine.pending_owntone_restart and self.engine.session is None and self.settings.supervise:

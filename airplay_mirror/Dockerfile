@@ -15,7 +15,7 @@ ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
 
 # Alpine's shairport-sync is a "classic" (AirPlay 1) build with the pipe and metadata backends we need.
 # The checks make a base-image drift fail the build instead of failing on the Pi.
-RUN apk add --no-cache shairport-sync python3 py3-pip curl \
+RUN apk add --no-cache shairport-sync python3 py3-pip py3-pillow curl \
  && echo "shairport-sync: $(shairport-sync -V)" \
  && shairport-sync -V | grep -qi pipe \
  && shairport-sync -V | grep -qi metadata \

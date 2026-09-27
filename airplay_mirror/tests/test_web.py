@@ -42,11 +42,15 @@ class FakeOwnTone:
         if pin is not None and self.fail_pin:
             raise OwnToneError("PUT /api/outputs/4 -> 500 pairing failed")
 
+    player_state = {"state": "stop"}
+    current_path = None
+
     async def player(self):
-        return {"state": "stop"}
+        self.calls.append(("player",))
+        return dict(self.player_state)
 
     async def queue_item_path(self, item_id):
-        return None
+        return self.current_path
 
     async def find_track_id(self, path):
         return 7
@@ -233,6 +237,28 @@ async def test_session_artwork(client):
     assert await r.read() == b"\xff\xd8\xff\xe0jpegbytes"
     data = await (await client.get("/api/state")).json()
     assert data["session"]["track"]["artwork_id"] and data["session"]["track"]["title"] == "Song"
+
+
+async def test_play_fallback_does_not_requeue_a_playing_pipe(client):
+    from airplay_mirror.engine import PlayPipe
+    from airplay_mirror.templates import pipe_path
+
+    await client.post("/api/groups", json={"name": "Bedroom Zone", "speakers": ["Bedroom"]})
+    await client.post("/api/hook/bedroom-zone/start")
+    runner = client.runner
+    path = pipe_path(runner.settings, runner.engine.groups["bedroom-zone"])
+    client.fake.player_state = {"state": "play", "item_id": 7}
+    client.fake.current_path = path
+    client.fake.calls.clear()
+    await runner.execute([PlayPipe("bedroom-zone")])
+    assert not any(c[0] == "queue_track" for c in client.fake.calls)
+    assert runner.engine.session.state == "playing" and runner.engine.session.item_id == 7
+    # but when OwnTone is idle the fallback still queues the pipe
+    client.fake.player_state = {"state": "stop"}
+    client.fake.current_path = None
+    client.fake.calls.clear()
+    await runner.execute([PlayPipe("bedroom-zone")])
+    assert ("queue_track", 7) in client.fake.calls
 
 
 async def test_session_stop_and_rescan(client):
